@@ -33,7 +33,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('signup')
-  @ThrottleKey('signup')
+  @ThrottleKey('global')
   async signUp(
     @Body() dto: SignUpDto,
     @Ip() ip: string,
@@ -49,7 +49,7 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @ThrottleKey('login')
+  @ThrottleKey('global')
   async login(
     @Body() dto: LoginDto,
     @Ip() ip: string,
@@ -90,7 +90,7 @@ export class AuthController {
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @UseGuards(CsrfGuard)
-  @ThrottleKey('refresh')
+  @ThrottleKey('global')
   async refresh(
     @Req() req: Request,
     @Ip() ip: string,
@@ -107,7 +107,7 @@ export class AuthController {
 
   @Post('forget-password')
   @HttpCode(HttpStatus.OK)
-  @ThrottleKey('forgetPassword')
+  @ThrottleKey('global')
   async forgetPassword(@Body() dto: ForgetPasswordDto) {
     await this.authService.forgetPassword(dto.email);
     return {
