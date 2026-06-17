@@ -15,6 +15,7 @@ import {
 import { LoginDto } from '../dto/login.dto';
 import { PasswordResetToken } from '../entities/password-reset-token.entity';
 import { MailService } from '@shared/providers/mail/mail.service';
+import { GoogleUserDto } from './../dto/google-user.dto';
 
 export interface SerializedUser {
   id: number | string;
@@ -96,6 +97,10 @@ export class AuthService {
       user: this.serializeUser(user),
       ...tokens,
     };
+  }
+
+  async googleLogin(user: User, ip?: string): Promise<GeneratedTokens> {
+    return this.generateTokens(user, ip);
   }
 
   async logout(userId: string, rawRefreshToken: string): Promise<void> {
@@ -187,6 +192,34 @@ export class AuthService {
       usedAt: new Date(),
     });
     await this.refreshTokenRepository.delete({ userId: storedToken.userId });
+  }
+
+  async findOrCreateGoogleUser(dto: GoogleUserDto): Promise<User> {
+    let user = await this.userRepository.findOne({
+      where: { googleId: dto.googleId },
+    });
+    if (user) return user;
+
+    user = await this.userRepository.findOne({
+      where: { email: dto.email },
+    });
+
+    if (user) {
+      user.googleId = dto.googleId;
+      if (!user.avatarUrl && dto.avatarUrl) {
+        user.avatarUrl = dto.avatarUrl;
+      }
+      return this.userRepository.save(user);
+    }
+
+    const newUser = this.userRepository.create({
+      googleId: dto.googleId,
+      email: dto.email,
+      firstName: dto.firstName,
+      lastName: dto.lastName,
+      avatarUrl: dto.avatarUrl ?? undefined,
+    });
+    return this.userRepository.save(newUser);
   }
 
   getMe(user: User): SerializedUser {

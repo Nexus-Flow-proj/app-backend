@@ -11,6 +11,7 @@ import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy';
 import { AuthController } from './controllers/auth.controller';
 import { PasswordResetToken } from './entities/password-reset-token.entity';
 import { MailModule } from '@shared/providers/mail/mail.module';
+import { GoogleStrategy } from './strategies/google.strategy';
 
 @Module({
   imports: [
@@ -27,7 +28,12 @@ import { MailModule } from '@shared/providers/mail/mail.module';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtAccessStrategy, JwtRefreshStrategy],
+  providers: [
+    AuthService,
+    JwtAccessStrategy,
+    JwtRefreshStrategy,
+    GoogleStrategy,
+  ],
   exports: [JwtModule, TypeOrmModule],
 })
 export class AuthModule {}

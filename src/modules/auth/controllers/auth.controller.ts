@@ -27,10 +27,15 @@ import { CsrfGuard } from '@shared/guards/csrf.guard';
 import { ForgetPasswordDto } from '../dto/forget-password.dto';
 import { ThrottleKey } from '@shared/decorators/throttle-key.decorator';
 import { ResetPasswordDto } from '../dto/reset-password.dto';
+import { GoogleAuthGuard } from '@shared/guards/google-auth.guard';
+import { ConfigService } from '@nestjs/config';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly configService: ConfigService,
+  ) {}
 
   @Post('signup')
   @ThrottleKey('global')
@@ -120,5 +125,25 @@ export class AuthController {
   async resetPassword(@Body() dto: ResetPasswordDto) {
     await this.authService.resetPassword(dto.token, dto.newPassword);
     return { message: 'Password reset successfully.' };
+  }
+
+  @Get('google')
+  @UseGuards(GoogleAuthGuard)
+  googleLogin(): void {}
+
+  @Get('google/callback')
+  @UseGuards(GoogleAuthGuard)
+  async googleCallback(
+    @CurrentUser() user: User,
+    @Ip() ip: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { accessToken, refreshToken, csrfToken } =
+      await this.authService.googleLogin(user, ip);
+
+    setAuthCookies(res, { accessToken, refreshToken, csrfToken });
+
+    const frontendUrl = this.configService.get<string>('env.frontendUrl');
+    res.redirect(`${frontendUrl}/dashboard`);
   }
 }

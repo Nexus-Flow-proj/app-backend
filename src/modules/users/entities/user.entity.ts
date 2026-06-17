@@ -38,15 +38,13 @@ export class User {
   @OneToMany(() => RefreshToken, (rt) => rt.user)
   refreshTokens!: RefreshToken[];
 
-  @CreateDateColumn({ name: 'created_at' })
-  createdAt!: Date;
-
-  @UpdateDateColumn({ name: 'updated_at' })
-  updatedAt!: Date;
   @OneToMany(() => Skill, (skill) => skill.user, {
     cascade: true,
   })
   skills!: Skill[];
+
+  @Column({ name: 'google_id', type: 'varchar', nullable: true, unique: true })
+  googleId!: string;
 
   @Column({
     name: 'reset_password_token_hash',
@@ -57,4 +55,10 @@ export class User {
 
   @Column({ name: 'reset_password_expires', type: 'timestamp', nullable: true })
   resetPasswordExpires!: Date | null;
+
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt!: Date;
+
+  @UpdateDateColumn({ name: 'updated_at' })
+  updatedAt!: Date;
 }
