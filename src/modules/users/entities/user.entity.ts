@@ -6,8 +6,11 @@ import {
   CreateDateColumn,
   Entity,
 } from 'typeorm';
-import { Skill } from '@modules/users/entities/skill.entity';
-import { RefreshToken } from '@modules/auth/entities/refresh-token.entity';
+import { Skill } from './skill.entity';
+import { RefreshToken } from '../../auth/entities/refresh-token.entity';
+import { Invite } from '../../projects/entities/invite.entity';
+import { Project } from '../../projects/entities/project.entity';
+import { ProjectMember } from '../../projects/entities/project-member.entity';
 
 @Entity('users')
 export class User {
@@ -55,6 +58,15 @@ export class User {
 
   @Column({ name: 'reset_password_expires', type: 'timestamp', nullable: true })
   resetPasswordExpires!: Date | null;
+
+  @OneToMany(() => ProjectMember, (member) => member.user)
+  projectMemberships!: ProjectMember[];
+
+  @OneToMany(() => Invite, (invite) => invite.invitedBy)
+  invites!: Invite[];
+
+  @OneToMany(() => Project, (project) => project.admin)
+  ownedProjects!: Project[];
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;

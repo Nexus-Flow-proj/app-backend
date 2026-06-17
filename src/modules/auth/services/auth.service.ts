@@ -15,7 +15,7 @@ import {
 import { LoginDto } from '../dto/login.dto';
 import { PasswordResetToken } from '../entities/password-reset-token.entity';
 import { MailService } from '@shared/providers/mail/mail.service';
-import { GoogleUserDto } from './../dto/google-user.dto';
+import { GoogleUserDto } from '../dto/google-user.dto';
 
 export interface SerializedUser {
   id: number | string;

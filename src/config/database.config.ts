@@ -16,6 +16,6 @@ export default registerAs(
     port: parseInt(process.env.DB_PORT || '5432', 10),
     username: process.env.DB_USERNAME || 'postgres',
     password: process.env.DB_PASSWORD || 'password',
-    database: process.env.DB_NAME || 'nexusflow_db',
+    database: process.env.DB_NAME || 'nexus_flow',
   }),
 );

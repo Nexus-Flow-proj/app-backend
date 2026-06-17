@@ -1,0 +1,40 @@
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  JoinColumn,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+  Unique,
+} from 'typeorm';
+import { Project } from './project.entity';
+import { User } from '../../users/entities/user.entity';
+import { ProjectRole } from '../enums/project-role.enum';
+
+@Entity('project_members')
+@Unique(['project', 'user'])
+export class ProjectMember {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
+
+  @ManyToOne(() => Project, (project) => project.members, {
+    onDelete: 'CASCADE',
+  })
+  @JoinColumn({ name: 'project_id' })
+  project!: Project;
+
+  @ManyToOne(() => User, (user) => user.projectMemberships, {
+    onDelete: 'CASCADE',
+  })
+  @JoinColumn({ name: 'user_id' })
+  user!: User;
+
+  @Column({ type: 'enum', enum: ProjectRole, default: ProjectRole.VIEWER })
+  roleLabel!: ProjectRole;
+
+  @Column({ default: false })
+  isAdmin!: boolean;
+
+  @CreateDateColumn({ name: 'joined_at' })
+  joinedAt!: Date;
+}
