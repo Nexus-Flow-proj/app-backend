@@ -1,13 +1,13 @@
 ## Deployment
 
-This project is set up to deploy the API on Render and the database on Neon.
+This project is set up to deploy the API on Railway and the database on Neon.
 
 ### Required environment variables
 
-Set these on Render:
+Set these on Railway:
 
 - `NODE_ENV=production`
-- `PORT=10000` or leave Render to assign its own port
+- `PORT` is injected by Railway automatically
 - `DATABASE_URL` from Neon
 - `FRONTEND_URL` for your deployed frontend
 - `JWT_ACCESS_TOKEN_SECRET`
@@ -28,25 +28,26 @@ Optional, if you want explicit throttling overrides:
 - `THROTTLER_REFRESH_TTL`
 - `THROTTLER_REFRESH_LIMIT`
 
-### Render setup
+### Railway setup
 
 1. Create a Neon database and copy the connection string.
-2. Create a new Render Web Service from this repository.
-3. Set the build command to `npm run build`.
-4. Set the start command to `npm run start:prod`.
-5. Add the environment variables above, especially `DATABASE_URL` and the JWT secrets.
-6. Add the pre-deploy command `npm run migration:run` so the Neon schema is created before each deploy.
-7. Deploy the service.
+2. Create a new Railway project and connect this GitHub repository.
+3. Add a Node.js service for the API.
+4. Set the build command to `npm run build`.
+5. Set the start command to `npm run start:prod`.
+6. Add the environment variables above, especially `DATABASE_URL` and the JWT secrets.
+7. Add a Railway deploy command or release step that runs `npm run migration:run` before the app starts.
+8. Deploy the service.
 
 ### Deployment flow
 
-1. Render builds the app with Nest.
+1. Railway builds the app with Nest.
 2. The migration command connects to Neon through `DATABASE_URL`.
 3. The app starts with production cookies, CORS, and proxy settings enabled.
-4. The API should be available under Render's service URL with the `/api` prefix.
+4. The API should be available under Railway's public domain with the `/api` prefix.
 
 ### Notes
 
-- The app uses cookie-based auth, so `FRONTEND_URL` must match the deployed frontend origin.
+- The app uses cookie-based auth, so `FRONTEND_URL` must match the deployed frontend origin exactly.
 - Neon requires SSL; the app now enables that automatically when `DATABASE_URL` is set.
 - The production build uses runtime alias resolution, so no import rewrites are needed during deploy.
