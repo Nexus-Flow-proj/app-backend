@@ -4,6 +4,7 @@ export class CreateUsersAuthTables1781376845129 implements MigrationInterface {
   name = 'CreateUsersAuthTables1781376845129';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);
     await queryRunner.query(
       `CREATE TABLE "skills" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "name" character varying NOT NULL, "user_id" uuid, CONSTRAINT "PK_0d3212120f4ecedf90864d7e298" PRIMARY KEY ("id"))`,
     );
@@ -43,5 +44,6 @@ export class CreateUsersAuthTables1781376845129 implements MigrationInterface {
     );
     await queryRunner.query(`DROP TABLE "refresh_tokens"`);
     await queryRunner.query(`DROP TABLE "skills"`);
+    await queryRunner.query(`DROP EXTENSION IF EXISTS "uuid-ossp"`);
   }
 }

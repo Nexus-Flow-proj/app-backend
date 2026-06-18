@@ -1,3 +1,4 @@
+import 'module-alias/register';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import cookieParser from 'cookie-parser';
@@ -11,6 +12,7 @@ async function bootstrap() {
   const port = configService.get<number>('env.PORT');
   const frontendUrl = configService.get<string>('env.frontendUrl');
 
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
   app.enableCors({
     origin: frontendUrl,
     credentials: true,
