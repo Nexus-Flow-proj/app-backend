@@ -24,6 +24,7 @@ import { ProjectDto } from './dtos/project.dto';
 import { InviteCreatedDto } from './dtos/invite-created.dto';
 import { InviteDto } from './dtos/invite.dto';
 import { ProjectMemberDto } from './dtos/project-member.dto';
+import { MailService } from '../../shared/providers/mail/mail.service';
 
 @Injectable()
 export class ProjectsService {
@@ -33,6 +34,7 @@ export class ProjectsService {
     private projectMemberRepo: Repository<ProjectMember>,
     @InjectRepository(Invite) private inviteRepo: Repository<Invite>,
     @InjectRepository(User) private userRepo: Repository<User>,
+    private mailService: MailService,
   ) {}
 
   async create(body: CreateProjectDto, userId: string): Promise<ProjectDto> {
@@ -173,6 +175,20 @@ export class ProjectsService {
     });
 
     const savedInvite = await this.inviteRepo.save(invite);
+
+    const inviterName = [project.admin?.firstName, project.admin?.lastName]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+
+    await this.mailService.sendProjectInvite(
+      normalizedEmail,
+      project.name,
+      inviterName || 'A project admin',
+      token,
+      savedInvite.expiresAt,
+    );
+
     return this.toCreatedInviteView(savedInvite, token);
   }
 
@@ -275,7 +291,10 @@ export class ProjectsService {
       throw new NotFoundException('Project member not found');
     }
 
-    if (member.isAdmin && body.roleLabel !== ProjectRole.OWNER) {
+    if (
+      this.isProjectOwnerMember(member) &&
+      body.roleLabel !== ProjectRole.OWNER
+    ) {
       throw new BadRequestException(
         'Project owner role cannot be downgraded here',
       );
@@ -303,7 +322,7 @@ export class ProjectsService {
     if (!member) {
       throw new NotFoundException('Project member not found');
     }
-    if (member.isAdmin) {
+    if (this.isProjectOwnerMember(member)) {
       throw new BadRequestException('Project owner cannot be removed');
     }
 
@@ -338,7 +357,8 @@ export class ProjectsService {
     if (project.admin?.id === userId) return;
 
     const isAdminMember = project.members?.some(
-      (member) => member.user.id === userId && member.isAdmin,
+      (member) =>
+        member.user.id === userId && this.isProjectOwnerMember(member),
     );
     if (!isAdminMember) {
       throw new ForbiddenException(
@@ -398,5 +418,9 @@ export class ProjectsService {
       ...this.toInviteView(invite),
       token,
     };
+  }
+
+  private isProjectOwnerMember(member: ProjectMember): boolean {
+    return member.isAdmin || member.roleLabel === ProjectRole.OWNER;
   }
 }

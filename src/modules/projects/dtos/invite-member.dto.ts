@@ -3,7 +3,7 @@ import { ProjectRole } from '../enums/project-role.enum';
 
 export class InviteMemberDto {
   @IsEmail()
-  email: string;
+  email!: string;
 
   @IsOptional()
   @IsEnum(ProjectRole)
