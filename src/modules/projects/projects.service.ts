@@ -66,25 +66,26 @@ export class ProjectsService {
   }
 
   async getMyProjects(userId: string): Promise<ProjectDto[]> {
-    const projects = await this.projectRepo.find({
-      relations: { admin: true, members: { user: true } },
-      order: { created_at: 'DESC' },
-    });
+    const projects = await this.projectRepo
+      .createQueryBuilder('project')
+      .leftJoinAndSelect('project.admin', 'admin')
+      .leftJoinAndSelect('project.members', 'member')
+      .leftJoinAndSelect('member.user', 'memberUser')
+      .where('project.admin_id = :userId', { userId })
+      .orWhere(
+        'project.id IN (SELECT pm.project_id FROM project_members pm WHERE pm.user_id = :userId)',
+        { userId },
+      )
+      .orderBy('project.created_at', 'DESC')
+      .getMany();
 
-    return projects
-      .filter((project) => {
-        if (project.admin?.id === userId) return true;
-        return (
-          project.members?.some((member) => member.user.id === userId) ?? false
-        );
-      })
-      .map((project) =>
-        this.toProjectView(
-          project,
-          project.members?.length ?? 0,
-          project.admin?.id ?? null,
-        ),
-      );
+    return projects.map((project) =>
+      this.toProjectView(
+        project,
+        project.members?.length ?? 0,
+        project.admin?.id ?? null,
+      ),
+    );
   }
 
   async getProject(projectId: string, userId: string): Promise<ProjectDto> {
