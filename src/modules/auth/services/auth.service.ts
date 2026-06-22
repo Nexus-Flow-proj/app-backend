@@ -16,13 +16,8 @@ import { LoginDto } from '../dto/login.dto';
 import { PasswordResetToken } from '../entities/password-reset-token.entity';
 import { MailService } from '@shared/providers/mail/mail.service';
 import { GoogleUserDto } from '../dto/google-user.dto';
-
-export interface SerializedUser {
-  id: number | string;
-  email: string;
-  firstName: string;
-  lastName: string;
-}
+import { UserResponseDto } from '@shared/dto/user-response.dto';
+import { toUserResponse } from '@shared/mappers/user.mapper';
 
 export interface GeneratedTokens {
   accessToken: string;
@@ -31,7 +26,7 @@ export interface GeneratedTokens {
 }
 
 export interface AuthResponse extends GeneratedTokens {
-  user: SerializedUser;
+  user: UserResponseDto;
 }
 
 @Injectable()
@@ -67,7 +62,7 @@ export class AuthService {
     const tokens = await this.generateTokens(savedUser, ip);
 
     return {
-      user: this.serializeUser(savedUser),
+      user: toUserResponse(savedUser),
       ...tokens,
     };
   }
@@ -94,7 +89,7 @@ export class AuthService {
     const tokens = await this.generateTokens(user, ip);
 
     return {
-      user: this.serializeUser(user),
+      user: toUserResponse(user),
       ...tokens,
     };
   }
@@ -222,7 +217,7 @@ export class AuthService {
     return this.userRepository.save(newUser);
   }
 
-  async getMe(userId: string): Promise<SerializedUser> {
+  async getMe(userId: string): Promise<UserResponseDto> {
     const user = await this.userRepository.findOne({
       where: { id: userId },
       select: {
@@ -237,7 +232,7 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
 
-    return this.serializeUser(user);
+    return toUserResponse(user);
   }
 
   private async generateTokens(
@@ -269,14 +264,5 @@ export class AuthService {
     const csrfToken = crypto.randomBytes(32).toString('hex');
 
     return { accessToken, refreshToken: rawRefreshToken, csrfToken };
-  }
-
-  private serializeUser(user: User): SerializedUser {
-    return {
-      id: user.id,
-      email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-    };
   }
 }
