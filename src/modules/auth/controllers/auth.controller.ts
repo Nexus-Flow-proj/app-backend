@@ -49,7 +49,10 @@ export class AuthController {
 
     setAuthCookies(res, { accessToken, refreshToken, csrfToken });
 
-    return { user };
+    return {
+      message: 'Account registered successfully.',
+      data: { user },
+    };
   }
 
   @Post('login')
@@ -65,18 +68,24 @@ export class AuthController {
 
     setAuthCookies(res, { accessToken, refreshToken, csrfToken });
 
-    return { user };
+    return {
+      message: 'Login successful.',
+      data: { user },
+    };
   }
 
   @Get('me')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
   getMe(@CurrentUser() user: User) {
-    return this.authService.getMe(user);
+    return {
+      message: 'Current user fetched successfully.',
+      data: { user: this.authService.getMe(user) },
+    };
   }
 
   @Post('logout')
-  @HttpCode(HttpStatus.NO_CONTENT)
+  @HttpCode(HttpStatus.OK)
   @UseGuards(CsrfGuard, JwtAuthGuard)
   async logout(
     @CurrentUser() user: User,
@@ -90,6 +99,10 @@ export class AuthController {
     }
     await this.authService.logout(user.id, refreshToken);
     clearAuthCookies(res);
+    return {
+      message: 'Logged out successfully.',
+      data: { loggedOut: true },
+    };
   }
 
   @Post('refresh')
@@ -108,6 +121,10 @@ export class AuthController {
     }
     const tokens = await this.authService.refresh(refreshToken, ip);
     setAuthCookies(res, tokens);
+    return {
+      message: 'Token refreshed successfully.',
+      data: {},
+    };
   }
 
   @Post('forget-password')
@@ -116,7 +133,8 @@ export class AuthController {
   async forgetPassword(@Body() dto: ForgetPasswordDto) {
     await this.authService.forgetPassword(dto.email);
     return {
-      message: 'If this email is registered, a reset link has been sent.',
+      message: 'Password reset mail sent successfully.',
+      data: { sent: true },
     };
   }
 
@@ -124,7 +142,10 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async resetPassword(@Body() dto: ResetPasswordDto) {
     await this.authService.resetPassword(dto.token, dto.newPassword);
-    return { message: 'Password reset successfully.' };
+    return {
+      message: 'Password reset successfully.',
+      data: { reset: true },
+    };
   }
 
   @Get('google')
