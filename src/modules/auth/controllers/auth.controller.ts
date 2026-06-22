@@ -77,10 +77,10 @@ export class AuthController {
   @Get('me')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
-  getMe(@CurrentUser() user: User) {
+  async getMe(@CurrentUser() user: User) {
     return {
       message: 'Current user fetched successfully.',
-      data: { user: this.authService.getMe(user) },
+      data: { user: await this.authService.getMe(user.id) },
     };
   }
 

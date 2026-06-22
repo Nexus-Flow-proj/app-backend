@@ -222,7 +222,21 @@ export class AuthService {
     return this.userRepository.save(newUser);
   }
 
-  getMe(user: User): SerializedUser {
+  async getMe(userId: string): Promise<SerializedUser> {
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
     return this.serializeUser(user);
   }
 
