@@ -12,6 +12,8 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigurableThrottlerGuard } from '@shared/guards/configurable-throttler.guard';
 import { ProjectsModule } from './modules/projects/projects.module';
+import { TasksModule } from './modules/tasks/tasks.module';
+import { BoardsModule } from './modules/boards/boards.module';
 
 @Module({
   imports: [
@@ -39,6 +41,8 @@ import { ProjectsModule } from './modules/projects/projects.module';
     AuthModule,
     UsersModule,
     ProjectsModule,
+    TasksModule,
+    BoardsModule,
   ],
   providers: [
     ConfigurableThrottlerGuard,
