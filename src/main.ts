@@ -4,6 +4,8 @@ import { AppModule } from './app.module';
 import cookieParser from 'cookie-parser';
 import { ConfigService } from '@nestjs/config';
 import { ValidationPipe } from '@nestjs/common';
+import { ApiResponseInterceptor } from '@shared/interceptors/api-response.interceptor';
+import { ApiExceptionFilter } from '@shared/filters/api-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -28,6 +30,8 @@ async function bootstrap() {
       transform: true,
     }),
   );
+  app.useGlobalInterceptors(new ApiResponseInterceptor());
+  app.useGlobalFilters(new ApiExceptionFilter());
   app.setGlobalPrefix('api');
   await app.listen(port ?? 3000);
 }
