@@ -30,7 +30,7 @@ export class Project {
   @Column({ type: 'enum', enum: ProjectStatus, default: ProjectStatus.ACTIVE })
   status!: ProjectStatus;
 
-  @Column({ type: 'string', default: '#d97706' })
+  @Column({ type: 'varchar', default: '#d97706' })
   color: string;
 
   @OneToMany(() => ProjectMember, (member) => member.project)
