@@ -34,15 +34,15 @@ export class ProjectsController {
     @Body() body: CreateProjectDto,
     @CurrentUser() user: User,
   ): Promise<any> {
-    const project: any = await this.projectsService.create(body, user.id);
-    return project;
+    const data = await this.projectsService.create(body, user.id);
+    return { message: 'Project created successfully.', data };
   }
 
   @Get()
   @Serialize(ProjectDto)
   async getMyProjects(@CurrentUser() user: User): Promise<any> {
-    const projects: any = await this.projectsService.getMyProjects(user.id);
-    return projects;
+    const data = await this.projectsService.getMyProjects(user.id);
+    return { message: 'Projects retrieved successfully.', data };
   }
 
   @Get(':projectId')
@@ -51,11 +51,8 @@ export class ProjectsController {
     @Param('projectId') projectId: string,
     @CurrentUser() user: User,
   ): Promise<any> {
-    const project: any = await this.projectsService.getProject(
-      projectId,
-      user.id,
-    );
-    return project;
+    const data = await this.projectsService.getProject(projectId, user.id);
+    return { message: 'Project retrieved successfully.', data };
   }
 
   @Patch(':projectId')
@@ -66,12 +63,12 @@ export class ProjectsController {
     @Body() body: UpdateProjectDto,
     @CurrentUser() user: User,
   ): Promise<any> {
-    const project: any = await this.projectsService.updateProject(
+    const data = await this.projectsService.updateProject(
       projectId,
       body,
       user.id,
     );
-    return project;
+    return { message: 'Project updated successfully.', data };
   }
 
   @Post(':projectId/invites')
@@ -82,12 +79,12 @@ export class ProjectsController {
     @Body() body: InviteMemberDto,
     @CurrentUser() user: User,
   ): Promise<any> {
-    const invite: any = await this.projectsService.inviteMember(
+    const data = await this.projectsService.inviteMember(
       projectId,
       body,
       user.id,
     );
-    return invite;
+    return { message: 'Invite sent successfully.', data };
   }
 
   @Post('invites/:token/accept')
@@ -97,8 +94,8 @@ export class ProjectsController {
     @Param('token') token: string,
     @CurrentUser() user: User,
   ): Promise<any> {
-    const member: any = await this.projectsService.acceptInvite(token, user.id);
-    return member;
+    const data = await this.projectsService.acceptInvite(token, user.id);
+    return { message: 'Invite accepted successfully.', data };
   }
 
   @Post('invites/:token/decline')
@@ -117,11 +114,8 @@ export class ProjectsController {
     @Param('projectId') projectId: string,
     @CurrentUser() user: User,
   ): Promise<any> {
-    const members: any = await this.projectsService.listMembers(
-      projectId,
-      user.id,
-    );
-    return members;
+    const data = await this.projectsService.listMembers(projectId, user.id);
+    return { message: 'Project members retrieved successfully.', data };
   }
 
   @Patch(':projectId/members/:memberId')
@@ -133,13 +127,13 @@ export class ProjectsController {
     @Body() body: UpdateProjectMemberDto,
     @CurrentUser() user: User,
   ): Promise<any> {
-    const member: any = await this.projectsService.updateMemberRole(
+    const data = await this.projectsService.updateMemberRole(
       projectId,
       memberId,
       body,
       user.id,
     );
-    return member;
+    return { message: 'Member role updated successfully.', data };
   }
 
   @Delete(':projectId/members/:memberId')

@@ -6,9 +6,24 @@ import { Task } from './entities/task.entity';
 import { SubTask } from './entities/subtask.entity';
 import { TaskComment } from './entities/task-comment.entity';
 import { TimeLog } from './entities/time-log.entity';
+import { Project } from '@modules/projects/entities/project.entity';
+import { ProjectMember } from '@modules/projects/entities/project-member.entity';
+import { User } from '@modules/users/entities/user.entity';
+import { Board } from '@modules/boards/entities/board.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Task, SubTask, TaskComment, TimeLog])],
+  imports: [
+    TypeOrmModule.forFeature([
+      Task,
+      SubTask,
+      TaskComment,
+      TimeLog,
+      Project,
+      ProjectMember,
+      User,
+      Board,
+    ]),
+  ],
   controllers: [TasksController],
   providers: [TasksService],
   exports: [TypeOrmModule],

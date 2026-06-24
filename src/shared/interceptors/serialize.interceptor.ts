@@ -24,8 +24,25 @@ export class SerializeInterceptor implements NestInterceptor {
     handler: CallHandler<any>,
   ): Observable<any> | Promise<Observable<any>> {
     return handler.handle().pipe(
-      map((data: any) => {
-        return plainToClass(this.dto, data, { excludeExtraneousValues: true });
+      map((res: any) => {
+        // If the controller returned an ApiEnvelope ({ message, data }),
+        // serialize only the `data` payload and preserve the envelope.
+        if (
+          res &&
+          typeof res === 'object' &&
+          'data' in res &&
+          'message' in res
+        ) {
+          return {
+            ...res,
+            data: plainToClass(this.dto, res.data, {
+              excludeExtraneousValues: true,
+            }),
+          };
+        }
+
+        // Otherwise serialize the raw value directly.
+        return plainToClass(this.dto, res, { excludeExtraneousValues: true });
       }),
     );
   }
