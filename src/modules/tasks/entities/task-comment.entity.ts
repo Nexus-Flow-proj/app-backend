@@ -2,6 +2,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
@@ -11,11 +12,12 @@ import { Task } from './task.entity';
 import { User } from '@modules/users/entities/user.entity';
 
 @Entity('task_comments')
+@Index(['task', 'created_at'])
 export class TaskComment {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @ManyToOne(() => Task, (task) => task.comments)
+  @ManyToOne(() => Task, (task) => task.comments, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'task_id' })
   task: Task;
 

@@ -22,3 +22,18 @@ export class CommentResponseDto {
   @Expose()
   created_at!: Date;
 }
+
+export class PaginatedCommentsDto {
+  @Expose()
+  @Type(() => CommentResponseDto)
+  comments!: CommentResponseDto[];
+
+  @Expose()
+  total!: number;
+
+  @Expose()
+  page!: number;
+
+  @Expose()
+  limit!: number;
+}

@@ -2,6 +2,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
@@ -10,6 +11,7 @@ import {
 import { Task } from './task.entity';
 
 @Entity('subtasks')
+@Index(['task', 'id'])
 export class SubTask {
   @PrimaryGeneratedColumn('uuid')
   id: string;

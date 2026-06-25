@@ -35,3 +35,18 @@ export class TimeLogResponseDto {
   @Expose()
   created_at!: Date;
 }
+
+export class PaginatedTimeLogsDto {
+  @Expose()
+  @Type(() => TimeLogResponseDto)
+  timeLogs!: TimeLogResponseDto[];
+
+  @Expose()
+  total!: number;
+
+  @Expose()
+  page!: number;
+
+  @Expose()
+  limit!: number;
+}

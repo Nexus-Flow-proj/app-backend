@@ -79,3 +79,18 @@ export class TaskDto {
   @Expose()
   updated_at: Date;
 }
+
+export class PaginatedTasksDto {
+  @Expose()
+  @Type(() => TaskDto)
+  tasks!: TaskDto[];
+
+  @Expose()
+  total!: number;
+
+  @Expose()
+  page!: number;
+
+  @Expose()
+  limit!: number;
+}

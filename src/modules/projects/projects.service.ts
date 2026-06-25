@@ -48,6 +48,7 @@ export class ProjectsService {
       description: body.description ?? null,
       deadline: body.deadline ? new Date(body.deadline) : null,
       status: body.status ?? ProjectStatus.ACTIVE,
+      color: body.color,
       admin: owner,
     });
 
@@ -115,6 +116,7 @@ export class ProjectsService {
       project.deadline = body.deadline ? new Date(body.deadline) : null;
     }
     if (body.status !== undefined) project.status = body.status;
+    if (body.color !== undefined) project.color = body.color;
 
     const savedProject = await this.projectRepo.save(project);
 

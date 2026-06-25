@@ -2,6 +2,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
@@ -10,6 +11,7 @@ import { Task } from './task.entity';
 import { User } from '@modules/users/entities/user.entity';
 
 @Entity('time_logs')
+@Index(['task', 'createdAt'])
 export class TimeLog {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

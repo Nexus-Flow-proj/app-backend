@@ -37,28 +37,44 @@ export class TasksService {
   ) {}
 
   private async checkProjectAccess(projectId: string, userId: string) {
-    const member = await this.projectMemberRepo.findOne({
+    const count = await this.projectMemberRepo.count({
       where: { project: { id: projectId }, user: { id: userId } },
     });
-    if (!member) {
+    if (count === 0) {
       throw new ForbiddenException('You do not have access to this project');
     }
   }
 
+  private async assertTaskAccess(taskId: string, userId: string): Promise<Task> {
+    const task = await this.taskRepo.findOne({
+      where: { id: taskId },
+      select: { id: true, project: { id: true } },
+      relations: { project: true },
+    });
+    if (!task) throw new NotFoundException('Task not found');
+    await this.checkProjectAccess(task.project.id, userId);
+    return task;
+  }
+
   // ─── Tasks ─────────────────────────────────────────────────────────────
 
-  async listTasks(projectId: string, userId: string) {
+  async listTasks(projectId: string, userId: string, page = 1, limit = 50) {
     await this.checkProjectAccess(projectId, userId);
-    return this.taskRepo.find({
+    const [tasks, total] = await this.taskRepo.findAndCount({
       where: { project: { id: projectId } },
       relations: {
-        project: true,
         createdBy: true,
         assignee: true,
         boardId: true,
       },
       order: { columnOrder: 'ASC' },
+      take: limit,
+      skip: (page - 1) * limit,
     });
+    tasks.forEach((task) => {
+      task.project = { id: projectId } as Project;
+    });
+    return { tasks, total, page, limit };
   }
 
   async createTask(projectId: string, dto: CreateTaskDto, userId: string) {
@@ -66,26 +82,24 @@ export class TasksService {
 
     const { assigneeId, boardId, ...scalarFields } = dto;
 
-    let assignee: User | null = null;
-    if (assigneeId) {
-      assignee = await this.userRepo.findOne({ where: { id: assigneeId } });
-      if (!assignee) throw new NotFoundException('Assignee not found');
-    }
+    const [assignee, boardColumn] = await Promise.all([
+      assigneeId
+        ? this.userRepo.findOne({ where: { id: assigneeId } })
+        : Promise.resolve(null),
+      boardId
+        ? this.boardRepo.findOne({ where: { id: boardId } })
+        : Promise.resolve(null),
+    ]);
 
-    let boardColumn: Board | null = null;
-    if (boardId) {
-      boardColumn = await this.boardRepo.findOne({ where: { id: boardId } });
-      if (!boardColumn) throw new NotFoundException('Board column not found');
-    }
+    if (assigneeId && !assignee) throw new NotFoundException('Assignee not found');
+    if (boardId && !boardColumn) throw new NotFoundException('Board column not found');
 
     const task = this.taskRepo.create({
       ...scalarFields,
       deadline: dto.deadline ? new Date(dto.deadline) : null,
       columnOrder: dto.columnOrder ?? 0,
-
       project: { id: projectId } as Project,
       createdBy: { id: userId } as User,
-
       assignee,
       boardId: boardColumn,
     });
@@ -118,17 +132,30 @@ export class TasksService {
   }
 
   async updateTask(taskId: string, dto: UpdateTaskDto, userId: string) {
-    const task = await this.getTask(taskId, userId);
+    const task = await this.taskRepo.findOne({
+      where: { id: taskId },
+      relations: {
+        project: true,
+        createdBy: true,
+        assignee: true,
+        boardId: true,
+      },
+    });
+
+    if (!task) throw new NotFoundException('Task not found');
+    await this.checkProjectAccess(task.project.id, userId);
 
     const { assigneeId, boardId, ...scalarFields } = dto;
+
+    const [assignee, board] = await Promise.all([
+      assigneeId ? this.userRepo.findOne({ where: { id: assigneeId } }) : Promise.resolve(undefined),
+      boardId ? this.boardRepo.findOne({ where: { id: boardId } }) : Promise.resolve(undefined),
+    ]);
 
     if (assigneeId !== undefined) {
       if (assigneeId === null) {
         task.assignee = null;
       } else {
-        const assignee = await this.userRepo.findOne({
-          where: { id: assigneeId },
-        });
         if (!assignee) throw new NotFoundException('Assignee not found');
         task.assignee = assignee;
       }
@@ -138,7 +165,6 @@ export class TasksService {
       if (boardId === null) {
         task.boardId = null;
       } else {
-        const board = await this.boardRepo.findOne({ where: { id: boardId } });
         if (!board) throw new NotFoundException('Board column not found');
         task.boardId = board;
       }
@@ -150,14 +176,14 @@ export class TasksService {
   }
 
   async deleteTask(taskId: string, userId: string) {
-    const task = await this.getTask(taskId, userId);
-    await this.taskRepo.remove(task);
+    await this.assertTaskAccess(taskId, userId);
+    await this.taskRepo.delete({ id: taskId });
   }
 
   // ─── Subtasks ──────────────────────────────────────────────────────────
 
   async createSubtask(taskId: string, dto: CreateSubTaskDto, userId: string) {
-    const task = await this.getTask(taskId, userId);
+    const task = await this.assertTaskAccess(taskId, userId);
 
     const subtask = this.subtaskRepo.create({
       title: dto.title,
@@ -174,7 +200,7 @@ export class TasksService {
     dto: UpdateSubTaskDto,
     userId: string,
   ) {
-    await this.getTask(taskId, userId); // check access
+    await this.assertTaskAccess(taskId, userId);
 
     const subtask = await this.subtaskRepo.findOne({
       where: { id: subtaskId, task: { id: taskId } },
@@ -190,41 +216,38 @@ export class TasksService {
   // ─── Comments ──────────────────────────────────────────────────────────
 
   async createComment(taskId: string, dto: CreateCommentDto, userId: string) {
-    const task = await this.getTask(taskId, userId);
-    const user = await this.userRepo.findOne({ where: { id: userId } });
-
-    if (!user) throw new NotFoundException('User not found');
+    const task = await this.assertTaskAccess(taskId, userId);
 
     const comment = this.taskCommentRepo.create({
       body: dto.body,
       task,
-      user,
+      user: { id: userId } as User,
     });
 
     return this.taskCommentRepo.save(comment);
   }
 
-  async listComments(taskId: string, userId: string) {
-    await this.getTask(taskId, userId); // check access
+  async listComments(taskId: string, userId: string, page = 1, limit = 50) {
+    await this.assertTaskAccess(taskId, userId);
 
-    return this.taskCommentRepo.find({
+    const [comments, total] = await this.taskCommentRepo.findAndCount({
       where: { task: { id: taskId } },
       relations: {
         user: true,
       },
       order: { created_at: 'ASC' },
+      take: limit,
+      skip: (page - 1) * limit,
     });
+
+    return { comments, total, page, limit };
   }
 
   async deleteComment(commentId: string, userId: string) {
     const comment = await this.taskCommentRepo.findOne({
       where: { id: commentId },
-      relations: {
-        user: true,
-        task: {
-          project: true,
-        },
-      },
+      select: { id: true, user: { id: true } },
+      relations: { user: true },
     });
 
     if (!comment) throw new NotFoundException('Comment not found');
@@ -233,49 +256,46 @@ export class TasksService {
       throw new ForbiddenException('You can only delete your own comments');
     }
 
-    await this.taskCommentRepo.remove(comment);
+    await this.taskCommentRepo.delete({ id: commentId });
   }
 
   // ─── Time Logs ─────────────────────────────────────────────────────────
 
   async createTimeLog(taskId: string, dto: CreateTimeLogDto, userId: string) {
-    const task = await this.getTask(taskId, userId);
-    const user = await this.userRepo.findOne({ where: { id: userId } });
-
-    if (!user) throw new NotFoundException('User not found');
+    const task = await this.assertTaskAccess(taskId, userId);
 
     const timeLog = this.timeLogRepo.create({
       durationMin: dto.durationMin,
       loggedDate: new Date(dto.loggedDate),
       note: dto.note,
       task,
-      user,
+      user: { id: userId } as User,
     });
 
     return this.timeLogRepo.save(timeLog);
   }
 
-  async listTimeLogs(taskId: string, userId: string) {
-    await this.getTask(taskId, userId); // check access
+  async listTimeLogs(taskId: string, userId: string, page = 1, limit = 50) {
+    await this.assertTaskAccess(taskId, userId);
 
-    return this.timeLogRepo.find({
+    const [timeLogs, total] = await this.timeLogRepo.findAndCount({
       where: { task: { id: taskId } },
       relations: {
         user: true,
       },
       order: { createdAt: 'DESC' },
+      take: limit,
+      skip: (page - 1) * limit,
     });
+
+    return { timeLogs, total, page, limit };
   }
 
   async deleteTimeLog(timeLogId: string, userId: string) {
     const timeLog = await this.timeLogRepo.findOne({
       where: { id: timeLogId },
-      relations: {
-        user: true,
-        task: {
-          project: true,
-        },
-      },
+      select: { id: true, user: { id: true } },
+      relations: { user: true },
     });
 
     if (!timeLog) throw new NotFoundException('Time log not found');
@@ -284,6 +304,6 @@ export class TasksService {
       throw new ForbiddenException('You can only delete your own time logs');
     }
 
-    await this.timeLogRepo.remove(timeLog);
+    await this.timeLogRepo.delete({ id: timeLogId });
   }
 }

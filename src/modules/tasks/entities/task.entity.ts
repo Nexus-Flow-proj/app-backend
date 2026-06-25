@@ -4,6 +4,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   JoinColumn,
   ManyToOne,
   OneToMany,
@@ -29,6 +30,7 @@ export interface TaskAttachment {
 }
 
 @Entity('tasks')
+@Index(['project', 'columnOrder'])
 export class Task {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

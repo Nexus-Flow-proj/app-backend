@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { TasksService } from './tasks.service';
@@ -16,17 +17,18 @@ import { CsrfGuard } from '@shared/guards/csrf.guard';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
 import { User } from '@modules/users/entities/user.entity';
 import { Serialize } from '@shared/interceptors/serialize.interceptor';
+import { PaginationQueryDto } from '@shared/dto/pagination-query.dto';
 
 import { CreateTaskDto } from './dtos/create-task.dto';
 import { UpdateTaskDto } from './dtos/update-task.dto';
-import { TaskDto } from './dtos/task.dto';
+import { TaskDto, PaginatedTasksDto } from './dtos/task.dto';
 import {
   CreateSubTaskDto,
   SubTaskResponseDto,
   UpdateSubTaskDto,
 } from './dtos/subtask.dto';
-import { CreateCommentDto, CommentResponseDto } from './dtos/comment.dto';
-import { CreateTimeLogDto, TimeLogResponseDto } from './dtos/time-log.dto';
+import { CreateCommentDto, CommentResponseDto, PaginatedCommentsDto } from './dtos/comment.dto';
+import { CreateTimeLogDto, TimeLogResponseDto, PaginatedTimeLogsDto } from './dtos/time-log.dto';
 
 @Controller()
 @UseGuards(JwtAuthGuard)
@@ -36,12 +38,19 @@ export class TasksController {
   // ─── Task Endpoints ────────────────────────────────────
 
   @Get('projects/:projectId/tasks')
-  @Serialize(TaskDto)
+  @Serialize(PaginatedTasksDto)
   async listTasks(
     @Param('projectId') projectId: string,
+    @Query() query: PaginationQueryDto,
     @CurrentUser() user: User,
   ) {
-    const data = await this.tasksService.listTasks(projectId, user.id);
+    const { page = 1, limit = 50 } = query;
+    const data = await this.tasksService.listTasks(
+      projectId,
+      user.id,
+      page,
+      limit,
+    );
     return { message: 'Tasks retrieved successfully.', data };
   }
 
@@ -131,9 +140,19 @@ export class TasksController {
   }
 
   @Get('tasks/:id/comments')
-  @Serialize(CommentResponseDto)
-  async listComments(@Param('id') taskId: string, @CurrentUser() user: User) {
-    const data = await this.tasksService.listComments(taskId, user.id);
+  @Serialize(PaginatedCommentsDto)
+  async listComments(
+    @Param('id') taskId: string,
+    @Query() query: PaginationQueryDto,
+    @CurrentUser() user: User,
+  ) {
+    const { page = 1, limit = 50 } = query;
+    const data = await this.tasksService.listComments(
+      taskId,
+      user.id,
+      page,
+      limit,
+    );
     return { message: 'Comments retrieved successfully.', data };
   }
 
@@ -163,9 +182,19 @@ export class TasksController {
   }
 
   @Get('tasks/:id/time-logs')
-  @Serialize(TimeLogResponseDto)
-  async listTimeLogs(@Param('id') taskId: string, @CurrentUser() user: User) {
-    const data = await this.tasksService.listTimeLogs(taskId, user.id);
+  @Serialize(PaginatedTimeLogsDto)
+  async listTimeLogs(
+    @Param('id') taskId: string,
+    @Query() query: PaginationQueryDto,
+    @CurrentUser() user: User,
+  ) {
+    const { page = 1, limit = 50 } = query;
+    const data = await this.tasksService.listTimeLogs(
+      taskId,
+      user.id,
+      page,
+      limit,
+    );
     return { message: 'Time logs retrieved successfully.', data };
   }
 
