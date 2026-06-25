@@ -381,6 +381,7 @@ export class ProjectsService {
       status: project.status,
       adminId,
       memberCount,
+      color: project.color,
       created_at: project.created_at,
       updated_at: project.updated_at,
     };

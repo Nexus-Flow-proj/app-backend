@@ -24,6 +24,9 @@ export class ProjectDto {
   memberCount!: number;
 
   @Expose()
+  color: string;
+
+  @Expose()
   created_at!: Date;
 
   @Expose()

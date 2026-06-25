@@ -17,4 +17,8 @@ export class UpdateProjectDto {
   @IsOptional()
   @IsEnum(ProjectStatus)
   status?: ProjectStatus;
+
+  @IsString()
+  @IsOptional()
+  color: string;
 }
