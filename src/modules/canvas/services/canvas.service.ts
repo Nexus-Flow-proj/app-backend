@@ -23,6 +23,14 @@ import { CreateCanvasObjectDto } from '../dtos/object/create-canvas-object.dto';
 import { UpdateCanvasObjectDto } from '../dtos/object/update-canvas-object.dto';
 import { Task } from '@modules/tasks/entities/task.entity';
 import { CanvasObjectType } from '../enums/canvas-object-type.enum';
+import { CanvasConnection } from '../entities/canvas-connection.entity';
+import { CanvasConnectionResponseDto } from '../dtos/connections/canvas-connection.response.dto';
+import {
+  toCanvasConnectionResponse,
+  toCanvasConnectionResponseList,
+} from '../mappers/canvas-connection.mapper';
+import { CreateCanvasConnectionDto } from '../dtos/connections/create.canvas-connection.dto';
+import { CanvasConnectionType } from '../enums/canvas-connection-type.enum';
 
 @Injectable()
 export class CanvasService {
@@ -38,6 +46,9 @@ export class CanvasService {
 
     @InjectRepository(Task)
     private readonly taskRepo: Repository<Task>,
+
+    @InjectRepository(CanvasConnection)
+    private readonly canvasConnectionRepo: Repository<CanvasConnection>,
   ) {}
 
   // Canvas Endpoints
@@ -114,6 +125,9 @@ export class CanvasService {
 
     const objects = await this.canvasObjectRepo.find({
       where: { canvasId },
+      relations: {
+        task: true,
+      },
       order: {
         zIndex: 'ASC',
         createdAt: 'ASC',
@@ -140,24 +154,11 @@ export class CanvasService {
         throw new BadRequestException('taskId is required for TASK objects');
       }
 
-      const task = await this.taskRepo.findOne({
-        where: {
-          id: dto.taskId,
-        },
-        relations: {
-            project: true,
-          },
+      const task = await this.validateTaskCanBeAddedToCanvas({
+        taskId: dto.taskId,
+        canvas,
+        userId,
       });
-
-      if (!task) {
-        throw new NotFoundException('Task not found');
-      }
-
-      if (task.project.id !== canvas.projectId) {
-        throw new ForbiddenException(
-          'Task does not belong to this canvas project',
-        );
-      }
 
       taskId = task.id;
     }
@@ -182,7 +183,14 @@ export class CanvasService {
 
     const savedObject = await this.canvasObjectRepo.save(object);
 
-    return toCanvasObjectResponse(savedObject);
+    const objectWithTask = await this.canvasObjectRepo.findOneOrFail({
+      where: { id: savedObject.id },
+      relations: {
+        task: true,
+      },
+    });
+
+    return toCanvasObjectResponse(objectWithTask);
   }
 
   async updateCanvasObject(
@@ -204,7 +212,14 @@ export class CanvasService {
 
     const savedObject = await this.canvasObjectRepo.save(object);
 
-    return toCanvasObjectResponse(savedObject);
+    const objectWithTask = await this.canvasObjectRepo.findOneOrFail({
+      where: { id: savedObject.id },
+      relations: {
+        task: true,
+      },
+    });
+
+    return toCanvasObjectResponse(objectWithTask);
   }
 
   async deleteCanvasObject(
@@ -222,6 +237,68 @@ export class CanvasService {
     await this.findCanvasAndEnsureUserCanAccess(object.canvasId, userId);
 
     await this.canvasObjectRepo.remove(object);
+
+    return { deleted: true };
+  }
+
+  // connection Endpoints
+  async getCanvasConnections(
+    canvasId: string,
+    userId: string,
+  ): Promise<CanvasConnectionResponseDto[]> {
+    await this.findCanvasAndEnsureUserCanAccess(canvasId, userId);
+
+    const connections = await this.canvasConnectionRepo.find({
+      where: { canvasId },
+      order: {
+        createdAt: 'ASC',
+      },
+    });
+
+    return toCanvasConnectionResponseList(connections);
+  }
+
+  async createCanvasConnection(
+    canvasId: string,
+    userId: string,
+    dto: CreateCanvasConnectionDto,
+  ): Promise<CanvasConnectionResponseDto> {
+    await this.findCanvasAndEnsureUserCanAccess(canvasId, userId);
+
+    await this.validateConnectionObjects({
+      canvasId,
+      sourceObjectId: dto.sourceObjectId,
+      targetObjectId: dto.targetObjectId,
+    });
+
+    const connection = this.canvasConnectionRepo.create({
+      canvasId,
+      sourceObjectId: dto.sourceObjectId,
+      targetObjectId: dto.targetObjectId,
+      type: dto.type ?? CanvasConnectionType.ARROW,
+      data: dto.data ?? null,
+    });
+
+    const savedConnection = await this.canvasConnectionRepo.save(connection);
+
+    return toCanvasConnectionResponse(savedConnection);
+  }
+
+  async deleteCanvasConnection(
+    connectionId: string,
+    userId: string,
+  ): Promise<{ deleted: true }> {
+    const connection = await this.canvasConnectionRepo.findOne({
+      where: { id: connectionId },
+    });
+
+    if (!connection) {
+      throw new NotFoundException('Canvas connection not found');
+    }
+
+    await this.findCanvasAndEnsureUserCanAccess(connection.canvasId, userId);
+
+    await this.canvasConnectionRepo.remove(connection);
 
     return { deleted: true };
   }
@@ -360,5 +437,78 @@ export class CanvasService {
         object[key as keyof CanvasObject] = value as never;
       }
     });
+  }
+
+  private async validateTaskCanBeAddedToCanvas(params: {
+    taskId: string;
+    canvas: Canvas;
+    userId: string;
+  }): Promise<Task> {
+    const task = await this.taskRepo.findOne({
+      where: { id: params.taskId },
+      relations: {
+        project: true,
+        assignee: true,
+        createdBy: true,
+      },
+    });
+
+    if (!task) {
+      throw new NotFoundException('Task not found');
+    }
+
+    if (task.project.id !== params.canvas.projectId) {
+      throw new ForbiddenException(
+        'Task does not belong to this canvas project',
+      );
+    }
+
+    const isTaskCreator = task.createdBy.id === params.userId;
+    const isTaskAssignee = task.assignee?.id === params.userId;
+
+    if (!isTaskCreator && !isTaskAssignee) {
+      throw new ForbiddenException(
+        'You can only add tasks assigned to you or created by you',
+      );
+    }
+
+    return task;
+  }
+
+  private async validateConnectionObjects(params: {
+    canvasId: string;
+    sourceObjectId: string;
+    targetObjectId: string;
+  }): Promise<void> {
+    if (params.sourceObjectId === params.targetObjectId) {
+      throw new BadRequestException(
+        'sourceObjectId and targetObjectId cannot be the same',
+      );
+    }
+
+    const sourceObject = await this.canvasObjectRepo.findOne({
+      where: { id: params.sourceObjectId },
+    });
+
+    if (!sourceObject) {
+      throw new NotFoundException('Source canvas object not found');
+    }
+
+    const targetObject = await this.canvasObjectRepo.findOne({
+      where: { id: params.targetObjectId },
+    });
+
+    if (!targetObject) {
+      throw new NotFoundException('Target canvas object not found');
+    }
+
+    if (
+      sourceObject.canvasId !== params.canvasId ||
+      targetObject.canvasId !== params.canvasId
+    ) {
+      throw new BadRequestException(
+        'Source and target objects must belong to the same canvas',
+      );
+    }
   }
 }

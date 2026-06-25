@@ -78,18 +78,16 @@ export class ApiResponseInterceptor implements NestInterceptor {
 
   private isApiEnvelope(data: unknown): data is ApiEnvelope {
     return Boolean(
-      data &&
-        typeof data === 'object' &&
-        ('message' in data || 'data' in data || 'meta' in data),
+      data && typeof data === 'object' && 'message' in data && 'data' in data,
     );
   }
 
   private isWrappedResponse(data: unknown): data is ApiWrappedResponse {
     return Boolean(
       data &&
-        typeof data === 'object' &&
-        'success' in data &&
-        'statusCode' in data,
+      typeof data === 'object' &&
+      'success' in data &&
+      'statusCode' in data,
     );
   }
 }

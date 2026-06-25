@@ -26,7 +26,7 @@ export class CreateCanvasObjectDto {
   @IsOptional()
   @IsNumber()
   @Min(1)
-  width?: number;
+  width!: number;
 
   @IsOptional()
   @IsNumber()

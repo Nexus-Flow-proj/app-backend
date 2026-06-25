@@ -16,6 +16,7 @@ import { UpdateCanvasViewportDto } from '../dtos/canvas/update-canvas-viewport.d
 import { CsrfGuard } from '@shared/guards/csrf.guard';
 import { CreateCanvasObjectDto } from '../dtos/object/create-canvas-object.dto';
 import { UpdateCanvasObjectDto } from '../dtos/object/update-canvas-object.dto';
+import { CreateCanvasConnectionDto } from '../dtos/connections/create.canvas-connection.dto';
 
 @Controller('canvas')
 @UseGuards(JwtAuthGuard)
@@ -83,5 +84,32 @@ export class CanvasController {
     @CurrentUser() user: User,
   ) {
     return this.canvasService.deleteCanvasObject(objectId, user.id);
+  }
+
+  @Get(':canvasId/connections')
+  getCanvasConnections(
+    @Param('canvasId') canvasId: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.canvasService.getCanvasConnections(canvasId, user.id);
+  }
+
+  @Post(':canvasId/connections')
+  @UseGuards(CsrfGuard)
+  createCanvasConnection(
+    @Param('canvasId') canvasId: string,
+    @CurrentUser() user: User,
+    @Body() dto: CreateCanvasConnectionDto,
+  ) {
+    return this.canvasService.createCanvasConnection(canvasId, user.id, dto);
+  }
+
+  @Delete('connections/:connectionId')
+  @UseGuards(CsrfGuard)
+  deleteCanvasConnection(
+    @Param('connectionId') connectionId: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.canvasService.deleteCanvasConnection(connectionId, user.id);
   }
 }
