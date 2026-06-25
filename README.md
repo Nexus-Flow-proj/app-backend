@@ -9,7 +9,7 @@ Set these on Railway:
 - `NODE_ENV=production`
 - `PORT` is injected by Railway automatically
 - `DATABASE_URL` from Neon
-- `FRONTEND_URL` for your deployed frontend
+- `FRONTEND_URL=https://app-frontend-git-dev-ahmed-abdulrahman-fathys-projects.vercel.app`
 - `JWT_ACCESS_TOKEN_SECRET`
 - `JWT_REFRESH_TOKEN_SECRET`
 - `RESEND_API_KEY`
@@ -48,6 +48,6 @@ Optional, if you want explicit throttling overrides:
 
 ### Notes
 
-- The app uses cookie-based auth, so `FRONTEND_URL` must match the deployed frontend origin exactly.
+- The app uses cookie-based auth, so `FRONTEND_URL` must match the deployed frontend origin exactly and should not end with `/`.
 - Neon requires SSL; the app now enables that automatically when `DATABASE_URL` is set.
 - The production build uses runtime alias resolution, so no import rewrites are needed during deploy.
