@@ -2,7 +2,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { Strategy } from 'passport-google-oauth20';
 import { AuthService } from '../services/auth.service';
-import { GoogleUserDto } from '../dto/google-user.dto';
+import { GoogleUserDto } from '../dtos/google-user.dto';
 import { User } from '@modules/users/entities/user.entity';
 
 interface GooglePassportProfile {

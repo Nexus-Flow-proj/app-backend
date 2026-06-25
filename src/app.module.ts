@@ -14,6 +14,7 @@ import { ConfigurableThrottlerGuard } from '@shared/guards/configurable-throttle
 import { ProjectsModule } from './modules/projects/projects.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { BoardsModule } from './modules/boards/boards.module';
+import { CanvasModule } from '@modules/canvas/canvas.module';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { BoardsModule } from './modules/boards/boards.module';
     ProjectsModule,
     TasksModule,
     BoardsModule,
+    CanvasModule
   ],
   providers: [
     ConfigurableThrottlerGuard,

@@ -6,18 +6,18 @@ import { RefreshToken } from '../entities/refresh-token.entity';
 import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { SignUpDto } from '../dto/signup.dto';
+import { SignUpDto } from '../dtos/signup.dto';
 import {
   ConflictException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { LoginDto } from '../dto/login.dto';
+import { LoginDto } from '../dtos/login.dto';
 import { PasswordResetToken } from '../entities/password-reset-token.entity';
 import { MailService } from '@shared/providers/mail/mail.service';
-import { GoogleUserDto } from '../dto/google-user.dto';
-import { UserResponseDto } from '@shared/dto/user-response.dto';
-import { toUserResponse } from '@shared/mappers/user.mapper';
+import { GoogleUserDto } from '../dtos/google-user.dto';
+import { UserResponseDto } from '@modules/users/dtos/user-response.dto';
+import { toUserResponse } from '@modules/users/mappers/user.mapper';
 
 export interface GeneratedTokens {
   accessToken: string;
@@ -41,7 +41,7 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
     private mailService: MailService,
-  ) {}
+  ) { }
 
   async signUp(dto: SignUpDto, ip?: string): Promise<AuthResponse> {
     const exists = await this.userRepository.findOne({

@@ -12,21 +12,21 @@ import {
   HttpCode,
 } from '@nestjs/common';
 import { AuthService } from '../services/auth.service';
-import { SignUpDto } from '../dto/signup.dto';
+import { SignUpDto } from '../dtos/signup.dto';
 import {
   clearAuthCookies,
   RequestCookies,
   setAuthCookies,
 } from '@shared/utils/cookie.util';
 import type { Response, Request } from 'express';
-import { LoginDto } from '../dto/login.dto';
+import { LoginDto } from '../dtos/login.dto';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
 import { User } from '@modules/users/entities/user.entity';
 import { JwtAuthGuard } from '@shared/guards/jwt-auth.guard';
 import { CsrfGuard } from '@shared/guards/csrf.guard';
-import { ForgetPasswordDto } from '../dto/forget-password.dto';
+import { ForgetPasswordDto } from '../dtos/forget-password.dto';
 import { ThrottleKey } from '@shared/decorators/throttle-key.decorator';
-import { ResetPasswordDto } from '../dto/reset-password.dto';
+import { ResetPasswordDto } from '../dtos/reset-password.dto';
 import { GoogleAuthGuard } from '@shared/guards/google-auth.guard';
 import { ConfigService } from '@nestjs/config';
 
