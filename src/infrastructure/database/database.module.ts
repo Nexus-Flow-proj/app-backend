@@ -18,7 +18,7 @@ import databaseConfig from '../../config/database.config';
         database: dbConfig.database,
         entities: [__dirname + '/../../modules/**/*.entity.{js,ts}'],
         ssl: dbConfig.ssl,
-        synchronize: process.env.NODE_ENV !== 'production',
+        synchronize: false,
       }),
     }),
   ],
