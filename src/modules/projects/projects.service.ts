@@ -193,6 +193,31 @@ export class ProjectsService {
     return this.toCreatedInviteView(savedInvite, token);
   }
 
+  async getInvite(token: string): Promise<InviteDto> {
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
+    const invite = await this.inviteRepo.findOne({
+      where: { tokenHash },
+      relations: { project: true },
+    });
+
+    if (!invite) {
+      throw new NotFoundException('Invite not found or has been revoked');
+    }
+
+    if (invite.status !== InviteStatus.PENDING) {
+      throw new BadRequestException(
+        `This invitation has already been ${invite.status.toLowerCase()}`,
+      );
+    }
+
+    if (invite.expiresAt < new Date()) {
+      throw new BadRequestException('This invitation link has expired');
+    }
+
+    return this.toInviteView(invite);
+  }
+
   async acceptInvite(token: string, userId: string): Promise<ProjectMemberDto> {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) {
@@ -407,6 +432,7 @@ export class ProjectsService {
     return {
       id: invite.id,
       projectId: invite.project.id,
+      projectName: invite.project.name,
       email: invite.email,
       roleLabel: invite.roleLabel,
       status: invite.status,

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigType } from '@nestjs/config';
 import databaseConfig from '../../config/database.config';
+import { isProduction } from './data-source';
 
 @Module({
   imports: [
@@ -10,12 +11,12 @@ import databaseConfig from '../../config/database.config';
       inject: [databaseConfig.KEY],
       useFactory: (dbConfig: ConfigType<typeof databaseConfig>) => ({
         type: dbConfig.type,
-        url: dbConfig.url,
         host: dbConfig.host,
         port: dbConfig.port,
         username: dbConfig.username,
         password: dbConfig.password,
         database: dbConfig.database,
+        url: isProduction ? dbConfig.url : '',
         entities: [__dirname + '/../../modules/**/*.entity.{js,ts}'],
         ssl: dbConfig.ssl,
         synchronize: false,

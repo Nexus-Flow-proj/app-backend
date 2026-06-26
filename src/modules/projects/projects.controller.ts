@@ -21,6 +21,7 @@ import { InviteMemberDto } from './dtos/invite-member.dto';
 import { InviteCreatedDto } from './dtos/invite-created.dto';
 import { ProjectMemberDto } from './dtos/project-member.dto';
 import { UpdateProjectMemberDto } from './dtos/update-project-member.dto';
+import { InviteDto } from './dtos/invite.dto';
 
 @Controller('projects')
 @UseGuards(JwtAuthGuard)
@@ -85,6 +86,13 @@ export class ProjectsController {
       user.id,
     );
     return { message: 'Invite sent successfully.', data };
+  }
+
+  @Get('invites/:token')
+  @Serialize(InviteDto)
+  async getInvite(@Param('token') token: string) {
+    const data = await this.projectsService.getInvite(token);
+    return { message: 'Invite retrieved successfully.', data };
   }
 
   @Post('invites/:token/accept')
