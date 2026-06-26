@@ -13,6 +13,9 @@ export class InviteDto {
   email!: string;
 
   @Expose()
+  projectName!: string;
+
+  @Expose()
   roleLabel!: ProjectRole;
 
   @Expose()
