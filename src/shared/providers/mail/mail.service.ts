@@ -29,7 +29,7 @@ export class MailService {
     email: string,
     projectName: string,
     inviterName: string,
-    inviteToken: string,
+    inviteLink: string,
     expiresAt: Date,
   ): Promise<void> {
     await this.resend.emails.send({
@@ -39,7 +39,7 @@ export class MailService {
       html: projectInviteTemplate(
         projectName,
         inviterName,
-        inviteToken,
+        inviteLink,
         expiresAt.toISOString(),
       ),
     });

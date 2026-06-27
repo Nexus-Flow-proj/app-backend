@@ -12,6 +12,7 @@ import { AuthController } from './controllers/auth.controller';
 import { PasswordResetToken } from './entities/password-reset-token.entity';
 import { MailModule } from '@shared/providers/mail/mail.module';
 import { GoogleStrategy } from './strategies/google.strategy';
+import { ProjectsModule } from '@modules/projects/projects.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { GoogleStrategy } from './strategies/google.strategy';
         signOptions: { expiresIn: '15m' },
       }),
     }),
+    ProjectsModule,
   ],
   controllers: [AuthController],
   providers: [

@@ -25,6 +25,7 @@ import { InviteCreatedDto } from './dtos/invite-created.dto';
 import { InviteDto } from './dtos/invite.dto';
 import { ProjectMemberDto } from './dtos/project-member.dto';
 import { MailService } from '../../shared/providers/mail/mail.service';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class ProjectsService {
@@ -35,6 +36,7 @@ export class ProjectsService {
     @InjectRepository(Invite) private inviteRepo: Repository<Invite>,
     @InjectRepository(User) private userRepo: Repository<User>,
     private mailService: MailService,
+    private configService: ConfigService,
   ) {}
 
   async create(body: CreateProjectDto, userId: string): Promise<ProjectDto> {
@@ -131,7 +133,7 @@ export class ProjectsService {
     projectId: string,
     body: InviteMemberDto,
     userId: string,
-  ): Promise<InviteCreatedDto> {
+  ): Promise<{ inviteLink: string }> {
     const project = await this.loadProjectOrFail(projectId);
     this.assertProjectAdmin(project, userId);
 
@@ -184,15 +186,19 @@ export class ProjectsService {
       .join(' ')
       .trim();
 
+    const frontendUrl = this.configService.get<string>('env.frontendUrl');
+
+    const inviteLink = `${frontendUrl}/invite/${token}`;
+
     await this.mailService.sendProjectInvite(
       normalizedEmail,
       project.name,
       inviterName || 'A project admin',
-      token,
+      inviteLink,
       savedInvite.expiresAt,
     );
 
-    return this.toCreatedInviteView(savedInvite, token);
+    return { inviteLink };
   }
 
   async getInvite(token: string): Promise<InviteDto> {

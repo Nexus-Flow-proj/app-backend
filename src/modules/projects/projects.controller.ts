@@ -18,10 +18,11 @@ import { CurrentUser } from '../../shared/decorators/current-user.decorator';
 import { User } from '../users/entities/user.entity';
 import { UpdateProjectDto } from './dtos/update-project.dto';
 import { InviteMemberDto } from './dtos/invite-member.dto';
-import { InviteCreatedDto } from './dtos/invite-created.dto';
 import { ProjectMemberDto } from './dtos/project-member.dto';
 import { UpdateProjectMemberDto } from './dtos/update-project-member.dto';
 import { InviteDto } from './dtos/invite.dto';
+import { InviteLinkResponseDto } from './dtos/invite-link-response.dto';
+import { Public } from '@shared/decorators/public.decorator';
 
 @Controller('projects')
 @UseGuards(JwtAuthGuard)
@@ -74,7 +75,7 @@ export class ProjectsController {
 
   @Post(':projectId/invites')
   @UseGuards(CsrfGuard)
-  @Serialize(InviteCreatedDto)
+  @Serialize(InviteLinkResponseDto)
   async inviteMember(
     @Param('projectId') projectId: string,
     @Body() body: InviteMemberDto,
@@ -88,6 +89,7 @@ export class ProjectsController {
     return { message: 'Invite sent successfully.', data };
   }
 
+  @Public()
   @Get('invites/:token')
   @Serialize(InviteDto)
   async getInvite(@Param('token') token: string) {

@@ -10,6 +10,7 @@ import { SignUpDto } from '../dtos/signup.dto';
 import {
   ConflictException,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { LoginDto } from '../dtos/login.dto';
@@ -18,6 +19,7 @@ import { MailService } from '@shared/providers/mail/mail.service';
 import { GoogleUserDto } from '../dtos/google-user.dto';
 import { UserResponseDto } from '@modules/users/dtos/user-response.dto';
 import { toUserResponse } from '@modules/users/mappers/user.mapper';
+import { ProjectsService } from '@modules/projects/projects.service';
 
 export interface GeneratedTokens {
   accessToken: string;
@@ -31,6 +33,8 @@ export interface AuthResponse extends GeneratedTokens {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     @InjectRepository(User)
     private userRepository: Repository<User>,
@@ -41,7 +45,8 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
     private mailService: MailService,
-  ) { }
+    private projectsService: ProjectsService,
+  ) {}
 
   async signUp(dto: SignUpDto, ip?: string): Promise<AuthResponse> {
     const exists = await this.userRepository.findOne({
@@ -59,6 +64,23 @@ export class AuthService {
     });
     const savedUser = await this.userRepository.save(newUser);
 
+    // 💡 If an invitation token is attached, intercept and consume it instantly!
+    if (dto.inviteToken) {
+      try {
+        await this.projectsService.acceptInvite(dto.inviteToken, savedUser.id);
+      } catch (error: any) {
+        this.logger.warn(
+          `User ${savedUser.id} signed up successfully, but auto-accepting invite token failed. Token: "${dto.inviteToken}". Reason: ${error?.message || error}`,
+        );
+
+        if (error && typeof error === 'object' && !('status' in error)) {
+          this.logger.error(
+            `Unexpected system failure processing invite token:`,
+            error.stack,
+          );
+        }
+      }
+    }
     const tokens = await this.generateTokens(savedUser, ip);
 
     return {
@@ -84,9 +106,7 @@ export class AuthService {
     if (!user) throw new UnauthorizedException('Invalid credentials');
 
     if (user.passwordHash == null) {
-      throw new UnauthorizedException(
-        'Invalid credentials',
-      );
+      throw new UnauthorizedException('Invalid credentials');
     }
 
     const isMatch = await bcrypt.compare(dto.password, user.passwordHash);

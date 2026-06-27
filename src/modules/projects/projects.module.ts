@@ -15,5 +15,6 @@ import { MailModule } from '../../shared/providers/mail/mail.module';
   ],
   providers: [ProjectsService],
   controllers: [ProjectsController],
+  exports: [ProjectsService],
 })
 export class ProjectsModule {}
