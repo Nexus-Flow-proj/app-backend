@@ -2,17 +2,10 @@
   "name": "app-backend",
   "version": "0.0.1",
   "type": "commonjs",
-  "description": "",
+  "description": "This project is set up to deploy the API on Railway and the database on Neon.",
   "author": "",
   "private": true,
   "license": "UNLICENSED",
-  "_moduleAliases": {
-    "config": "dist/config",
-    "@infrastructure": "dist/infrastructure",
-    "@modules": "dist/modules",
-    "@providers": "dist/shared/providers",
-    "@shared": "dist/shared"
-  },
   "scripts": {
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
@@ -100,5 +93,10 @@
     ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
-  }
+  },
+  "main": "index.js",
+  "directories": {
+    "test": "test"
+  },
+  "keywords": []
 }

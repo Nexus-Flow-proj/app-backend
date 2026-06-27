@@ -46,9 +46,8 @@ export class AuthService {
     private configService: ConfigService,
     private mailService: MailService,
     private projectsService: ProjectsService,
-  ) {}
     private dataSource: DataSource,
-  ) { }
+  ) {}
 
   async signUp(dto: SignUpDto, ip?: string): Promise<AuthResponse> {
     const exists = await this.userRepository.findOne({
