@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { QueryFailedError, Repository } from 'typeorm';
 import { Canvas } from '../entities/canvas.entity';
 import { Project } from '../../projects/entities/project.entity';
 import { CanvasType } from '../enums/canvas-type.enum';
@@ -353,14 +353,34 @@ export class CanvasService {
     });
 
     if (!canvas) {
-      canvas = this.canvasRepo.create({
-        projectId: params.project.id,
-        ownerId: params.ownerId,
-        type: params.type,
-        name: params.name,
-      });
+      try {
+        canvas = this.canvasRepo.create({
+          projectId: params.project.id,
+          ownerId: params.ownerId,
+          type: params.type,
+          name: params.name,
+        });
 
-      await this.canvasRepo.save(canvas);
+        await this.canvasRepo.save(canvas);
+      } catch (error) {
+        if (
+          error instanceof QueryFailedError &&
+          (error as { code?: string }).code === '23505'
+        ) {
+          return this.canvasRepo.findOneOrFail({
+            where: {
+              projectId: params.project.id,
+              ownerId: params.ownerId,
+              type: params.type,
+            },
+            relations: {
+              owner: true,
+            },
+          });
+        }
+
+        throw error;
+      }
     }
 
     return this.canvasRepo.findOneOrFail({

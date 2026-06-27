@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import { RefreshToken } from '../entities/refresh-token.entity';
-import { Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { SignUpDto } from '../dtos/signup.dto';
@@ -46,6 +46,7 @@ export class AuthService {
     private configService: ConfigService,
     private mailService: MailService,
     private projectsService: ProjectsService,
+    private dataSource: DataSource,
   ) {}
 
   async signUp(dto: SignUpDto, ip?: string): Promise<AuthResponse> {
@@ -141,17 +142,20 @@ export class AuthService {
       .update(rawRefreshToken)
       .digest('hex');
 
-    const stored = await this.refreshTokenRepository.findOne({
-      where: { tokenHash },
-      relations: { user: true },
+    return this.dataSource.transaction(async (manager) => {
+      const stored = await manager.findOne(RefreshToken, {
+        where: { tokenHash },
+        relations: { user: true },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      if (!stored || stored.expiresAt < new Date()) {
+        throw new UnauthorizedException('Invalid or expired refresh token');
+      }
+
+      await manager.delete(RefreshToken, { tokenHash });
+      return this.generateTokens(stored.user, ip, manager);
     });
-
-    if (!stored || stored.expiresAt < new Date()) {
-      throw new UnauthorizedException('Invalid or expired refresh token');
-    }
-    await this.refreshTokenRepository.delete({ tokenHash });
-
-    return this.generateTokens(stored.user, ip);
   }
 
   async forgetPassword(email: string): Promise<void> {
@@ -169,22 +173,25 @@ export class AuthService {
       if (recentToken.createdAt > twoMinAgo) return;
     }
 
-    await this.passwordResetTokenRepository.delete({ userId: user.id });
-
     const rawToken = crypto.randomBytes(32).toString('hex');
     const tokenHash = crypto
       .createHash('sha256')
       .update(rawToken)
       .digest('hex');
 
-    await this.passwordResetTokenRepository.save(
-      this.passwordResetTokenRepository.create({
-        userId: user.id,
-        tokenHash,
-        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
-        usedAt: null,
-      }),
-    );
+    await this.dataSource.transaction(async (manager) => {
+      await manager.delete(PasswordResetToken, { userId: user.id });
+
+      await manager.save(
+        PasswordResetToken,
+        manager.create(PasswordResetToken, {
+          userId: user.id,
+          tokenHash,
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+          usedAt: null,
+        }),
+      );
+    });
 
     const frontendUrl = this.configService.get<string>('mail.frontendUrl');
     const resetUrl = `${frontendUrl}/reset-password?token=${rawToken}`;
@@ -194,25 +201,30 @@ export class AuthService {
   async resetPassword(token: string, newPassword: string): Promise<void> {
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
 
-    const storedToken = await this.passwordResetTokenRepository.findOne({
-      where: { tokenHash },
-      relations: { user: true },
-    });
-    if (!storedToken)
-      throw new UnauthorizedException('Invalid or expired token');
-    if (storedToken.usedAt)
-      throw new UnauthorizedException('Token already used');
-    if (storedToken.expiresAt < new Date())
-      throw new UnauthorizedException('Token expired');
-
     const passwordHash = await bcrypt.hash(newPassword, 10);
 
-    await this.userRepository.update(storedToken.userId, { passwordHash });
+    await this.dataSource.transaction(async (manager) => {
+      const storedToken = await manager.findOne(PasswordResetToken, {
+        where: { tokenHash },
+        relations: { user: true },
+        lock: { mode: 'pessimistic_write' },
+      });
 
-    await this.passwordResetTokenRepository.update(storedToken.id, {
-      usedAt: new Date(),
+      if (!storedToken)
+        throw new UnauthorizedException('Invalid or expired token');
+      if (storedToken.usedAt)
+        throw new UnauthorizedException('Token already used');
+      if (storedToken.expiresAt < new Date())
+        throw new UnauthorizedException('Token expired');
+
+      await manager.update(User, storedToken.userId, { passwordHash });
+
+      await manager.update(PasswordResetToken, storedToken.id, {
+        usedAt: new Date(),
+      });
+
+      await manager.delete(RefreshToken, { userId: storedToken.userId });
     });
-    await this.refreshTokenRepository.delete({ userId: storedToken.userId });
   }
 
   async findOrCreateGoogleUser(dto: GoogleUserDto): Promise<User> {
@@ -264,6 +276,7 @@ export class AuthService {
   private async generateTokens(
     user: User,
     ip?: string,
+    manager?: EntityManager,
   ): Promise<GeneratedTokens> {
     const payload = { sub: user.id, email: user.email };
 
@@ -278,8 +291,12 @@ export class AuthService {
       .update(rawRefreshToken)
       .digest('hex');
 
-    await this.refreshTokenRepository.save(
-      this.refreshTokenRepository.create({
+    const refreshTokenRepository = manager
+      ? manager.getRepository(RefreshToken)
+      : this.refreshTokenRepository;
+
+    await refreshTokenRepository.save(
+      refreshTokenRepository.create({
         userId: user.id,
         tokenHash,
         ipAddress: ip,
