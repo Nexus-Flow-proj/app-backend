@@ -4,7 +4,6 @@ import { TaskStatus } from '../enums/task-status.enum';
 import { TaskPriority } from '../enums/task-priority.enum';
 import { TaskAttachment } from '../entities/task.entity';
 
-// 💡 Mini DTO to expose only safe, essential user details for assignee and creator
 export class TaskUserDto {
   @Expose()
   id: string;
@@ -20,6 +19,17 @@ export class TaskUserDto {
 
   @Expose()
   avatarUrl: string | null;
+}
+
+export class BoardColumnInfoDto {
+  @Expose()
+  id: string;
+
+  @Expose()
+  name: string;
+
+  @Expose()
+  color: string;
 }
 
 export class TaskDto {
@@ -53,22 +63,18 @@ export class TaskDto {
   @Expose()
   attachments: TaskAttachment[];
 
-  // 💡 Safely flattens the loaded Project entity down to just its UUID string
   @Expose()
   @Transform(({ obj }) => obj.project?.id || null)
   projectId: string;
 
-  // 💡 Safely flattens the loaded BoardColumn entity down to its UUID string
   @Expose()
-  @Transform(({ obj }) => obj.boardId?.id || null)
-  boardColumnId: string | null;
+  @Type(() => BoardColumnInfoDto)
+  boardColumn: BoardColumnInfoDto;
 
-  // 💡 Serializes creator details using the safe nested TaskUserDto layout
   @Expose()
   @Type(() => TaskUserDto)
   createdBy: TaskUserDto;
 
-  // 💡 Serializes assignee details safely, returning null if unassigned
   @Expose()
   @Type(() => TaskUserDto)
   assignee: TaskUserDto | null;

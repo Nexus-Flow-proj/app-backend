@@ -45,6 +45,16 @@ export class TasksController {
     return { message: 'Tasks retrieved successfully.', data };
   }
 
+  @Get('boards/:columnId/tasks')
+  @Serialize(TaskDto)
+  async listTasksByColumn(
+    @Param('columnId') columnId: string,
+    @CurrentUser() user: User,
+  ) {
+    const data = await this.tasksService.listTasksByColumn(columnId, user.id);
+    return { message: 'Tasks retrieved successfully.', data };
+  }
+
   @Post('projects/:projectId/tasks')
   @UseGuards(CsrfGuard)
   @Serialize(TaskDto)
@@ -124,11 +134,7 @@ export class TasksController {
     @Param('sid') subtaskId: string,
     @CurrentUser() user: User,
   ) {
-    const data = await this.tasksService.deleteSubtask(
-      taskId,
-      subtaskId,
-      user.id,
-    );
+    const data = await this.tasksService.deleteSubtask(subtaskId, user.id);
     return { message: 'Subtask deleted successfully', data };
   }
 

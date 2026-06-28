@@ -66,9 +66,9 @@ export class Task {
   @Column({ type: 'enum', enum: TaskPriority, default: TaskPriority.MEDIUM })
   priority: TaskPriority;
 
-  @ManyToOne(() => Board, { nullable: true, onDelete: 'SET NULL' })
+  @ManyToOne(() => Board, { nullable: false, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'board_column_id' })
-  boardId: Board | null;
+  boardColumn: Board;
 
   @Column({ name: 'column_order', type: 'float' })
   columnOrder: number;

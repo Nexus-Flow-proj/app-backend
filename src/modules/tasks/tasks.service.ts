@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -45,6 +46,23 @@ export class TasksService {
     }
   }
 
+  private async resolveBoardColumn(
+    boardColumnId: string,
+    projectId: string,
+  ): Promise<Board> {
+    const column = await this.boardRepo.findOne({
+      where: { id: boardColumnId },
+      relations: { project: true },
+    });
+    if (!column) throw new NotFoundException('Board column not found');
+    if (column.project.id !== projectId) {
+      throw new BadRequestException(
+        'The board column does not belong to this project',
+      );
+    }
+    return column;
+  }
+
   // ─── Tasks ─────────────────────────────────────────────────────────────
 
   async listTasks(projectId: string, userId: string) {
@@ -55,7 +73,28 @@ export class TasksService {
         project: true,
         createdBy: true,
         assignee: true,
-        boardId: true,
+        boardColumn: true,
+      },
+      order: { columnOrder: 'ASC' },
+    });
+  }
+
+  async listTasksByColumn(columnId: string, userId: string) {
+    const column = await this.boardRepo.findOne({
+      where: { id: columnId },
+      relations: { project: true },
+    });
+    if (!column) throw new NotFoundException('Board column not found');
+
+    await this.checkProjectAccess(column.project.id, userId);
+
+    return this.taskRepo.find({
+      where: { boardColumn: { id: columnId } },
+      relations: {
+        project: true,
+        createdBy: true,
+        assignee: true,
+        boardColumn: true,
       },
       order: { columnOrder: 'ASC' },
     });
@@ -64,18 +103,14 @@ export class TasksService {
   async createTask(projectId: string, dto: CreateTaskDto, userId: string) {
     await this.checkProjectAccess(projectId, userId);
 
-    const { assigneeId, boardId, ...scalarFields } = dto;
+    const { assigneeId, boardColumnId, ...scalarFields } = dto;
+
+    const boardColumn = await this.resolveBoardColumn(boardColumnId, projectId);
 
     let assignee: User | null = null;
     if (assigneeId) {
       assignee = await this.userRepo.findOne({ where: { id: assigneeId } });
       if (!assignee) throw new NotFoundException('Assignee not found');
-    }
-
-    let boardColumn: Board | null = null;
-    if (boardId) {
-      boardColumn = await this.boardRepo.findOne({ where: { id: boardId } });
-      if (!boardColumn) throw new NotFoundException('Board column not found');
     }
 
     const task = this.taskRepo.create({
@@ -87,7 +122,7 @@ export class TasksService {
       createdBy: { id: userId } as User,
 
       assignee,
-      boardId: boardColumn,
+      boardColumn,
     });
 
     return this.taskRepo.save(task);
@@ -100,7 +135,7 @@ export class TasksService {
         project: true,
         createdBy: true,
         assignee: true,
-        boardId: true,
+        boardColumn: true,
         subtasks: true,
         comments: {
           user: true,
@@ -120,7 +155,7 @@ export class TasksService {
   async updateTask(taskId: string, dto: UpdateTaskDto, userId: string) {
     const task = await this.getTask(taskId, userId);
 
-    const { assigneeId, boardId, ...scalarFields } = dto;
+    const { assigneeId, boardColumnId, ...scalarFields } = dto;
 
     if (assigneeId !== undefined) {
       if (assigneeId === null) {
@@ -134,14 +169,11 @@ export class TasksService {
       }
     }
 
-    if (boardId !== undefined) {
-      if (boardId === null) {
-        task.boardId = null;
-      } else {
-        const board = await this.boardRepo.findOne({ where: { id: boardId } });
-        if (!board) throw new NotFoundException('Board column not found');
-        task.boardId = board;
-      }
+    if (boardColumnId !== undefined) {
+      task.boardColumn = await this.resolveBoardColumn(
+        boardColumnId,
+        task.project.id,
+      );
     }
 
     Object.assign(task, scalarFields);
@@ -174,7 +206,7 @@ export class TasksService {
     dto: UpdateSubTaskDto,
     userId: string,
   ) {
-    await this.getTask(taskId, userId); // check access
+    await this.getTask(taskId, userId);
 
     const subtask = await this.subtaskRepo.findOne({
       where: { id: subtaskId, task: { id: taskId } },
@@ -220,7 +252,7 @@ export class TasksService {
   }
 
   async listComments(taskId: string, userId: string) {
-    await this.getTask(taskId, userId); // check access
+    await this.getTask(taskId, userId);
 
     return this.taskCommentRepo.find({
       where: { task: { id: taskId } },
@@ -230,6 +262,8 @@ export class TasksService {
       order: { created_at: 'ASC' },
     });
   }
+
+  async updateComment() {}
 
   async deleteComment(commentId: string, userId: string) {
     const comment = await this.taskCommentRepo.findOne({
@@ -271,7 +305,7 @@ export class TasksService {
   }
 
   async listTimeLogs(taskId: string, userId: string) {
-    await this.getTask(taskId, userId); // check access
+    await this.getTask(taskId, userId);
 
     return this.timeLogRepo.find({
       where: { task: { id: taskId } },
