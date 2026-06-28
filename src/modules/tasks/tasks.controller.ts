@@ -27,8 +27,16 @@ import {
   SubTaskResponseDto,
   UpdateSubTaskDto,
 } from './dtos/subtask.dto';
-import { CreateCommentDto, CommentResponseDto, PaginatedCommentsDto } from './dtos/comment.dto';
-import { CreateTimeLogDto, TimeLogResponseDto, PaginatedTimeLogsDto } from './dtos/time-log.dto';
+import {
+  CreateCommentDto,
+  CommentResponseDto,
+  PaginatedCommentsDto,
+} from './dtos/comment.dto';
+import {
+  CreateTimeLogDto,
+  TimeLogResponseDto,
+  PaginatedTimeLogsDto,
+} from './dtos/time-log.dto';
 
 @Controller()
 @UseGuards(JwtAuthGuard)
@@ -133,11 +141,7 @@ export class TasksController {
     @Param('sid') subtaskId: string,
     @CurrentUser() user: User,
   ) {
-    const data = await this.tasksService.deleteSubtask(
-      taskId,
-      subtaskId,
-      user.id,
-    );
+    const data = await this.tasksService.deleteSubtask(subtaskId, user.id);
     return { message: 'Subtask deleted successfully', data };
   }
 
