@@ -19,7 +19,6 @@ import { SubTask } from './subtask.entity';
 import { TaskComment } from './task-comment.entity';
 import { TimeLog } from './time-log.entity';
 
-
 export interface TaskAttachment {
   id: string;
   name: string;
@@ -68,9 +67,9 @@ export class Task {
   @Column({ type: 'enum', enum: TaskPriority, default: TaskPriority.MEDIUM })
   priority: TaskPriority;
 
-  @ManyToOne(() => Board, { nullable: true, onDelete: 'SET NULL' })
+  @ManyToOne(() => Board, { nullable: false, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'board_column_id' })
-  boardId: Board | null;
+  boardColumn: Board;
 
   @Column({ name: 'column_order', type: 'float' })
   columnOrder: number;
@@ -87,10 +86,9 @@ export class Task {
   @OneToMany(() => TimeLog, (timeLog) => timeLog.task)
   timeLogs!: TimeLog[];
 
+  @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
+  createdAt: Date;
 
-  @CreateDateColumn({ type: 'timestamptz' })
-  created_at: Date;
-
-  @UpdateDateColumn({ type: 'timestamptz' })
-  updated_at: Date;
+  @UpdateDateColumn({ type: 'timestamptz', name: 'updated_at' })
+  updatedAt: Date;
 }

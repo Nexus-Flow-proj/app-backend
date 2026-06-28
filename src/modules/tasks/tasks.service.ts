@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -45,7 +46,10 @@ export class TasksService {
     }
   }
 
-  private async assertTaskAccess(taskId: string, userId: string): Promise<Task> {
+  private async assertTaskAccess(
+    taskId: string,
+    userId: string,
+  ): Promise<Task> {
     const task = await this.taskRepo.findOne({
       where: { id: taskId },
       select: { id: true, project: { id: true } },
@@ -56,16 +60,34 @@ export class TasksService {
     return task;
   }
 
+  private async resolveBoardColumn(
+    boardColumnId: string,
+    projectId: string,
+  ): Promise<Board> {
+    const column = await this.boardRepo.findOne({
+      where: { id: boardColumnId },
+      relations: { project: true },
+    });
+    if (!column) throw new NotFoundException('Board column not found');
+    if (column.project.id !== projectId) {
+      throw new BadRequestException(
+        'The board column does not belong to this project',
+      );
+    }
+    return column;
+  }
+
   // ─── Tasks ─────────────────────────────────────────────────────────────
 
   async listTasks(projectId: string, userId: string, page = 1, limit = 50) {
     await this.checkProjectAccess(projectId, userId);
+
     const [tasks, total] = await this.taskRepo.findAndCount({
       where: { project: { id: projectId } },
       relations: {
         createdBy: true,
         assignee: true,
-        boardId: true,
+        boardColumn: true,
       },
       order: { columnOrder: 'ASC' },
       take: limit,
@@ -77,22 +99,50 @@ export class TasksService {
     return { tasks, total, page, limit };
   }
 
+  async listTasksByColumn(columnId: string, userId: string) {
+    const column = await this.boardRepo.findOne({
+      where: { id: columnId },
+      relations: { project: true },
+    });
+    if (!column) throw new NotFoundException('Board column not found');
+
+    await this.checkProjectAccess(column.project.id, userId);
+
+    return this.taskRepo.find({
+      where: { boardColumn: { id: columnId } },
+      relations: {
+        project: true,
+        createdBy: true,
+        assignee: true,
+        boardColumn: true,
+      },
+      order: { columnOrder: 'ASC' },
+    });
+  }
+
   async createTask(projectId: string, dto: CreateTaskDto, userId: string) {
     await this.checkProjectAccess(projectId, userId);
 
-    const { assigneeId, boardId, ...scalarFields } = dto;
+    const { assigneeId, boardColumnId, ...scalarFields } = dto;
 
     const [assignee, boardColumn] = await Promise.all([
       assigneeId
         ? this.userRepo.findOne({ where: { id: assigneeId } })
         : Promise.resolve(null),
-      boardId
-        ? this.boardRepo.findOne({ where: { id: boardId } })
-        : Promise.resolve(null),
+      this.boardRepo.findOne({
+        where: { id: boardColumnId },
+        relations: { project: true },
+      }),
     ]);
 
-    if (assigneeId && !assignee) throw new NotFoundException('Assignee not found');
-    if (boardId && !boardColumn) throw new NotFoundException('Board column not found');
+    if (assigneeId && !assignee)
+      throw new NotFoundException('Assignee not found');
+    if (!boardColumn) throw new NotFoundException('Board column not found');
+    if (boardColumn.project.id !== projectId) {
+      throw new BadRequestException(
+        'The board column does not belong to this project',
+      );
+    }
 
     const task = this.taskRepo.create({
       ...scalarFields,
@@ -101,7 +151,7 @@ export class TasksService {
       project: { id: projectId } as Project,
       createdBy: { id: userId } as User,
       assignee,
-      boardId: boardColumn,
+      boardColumn,
     });
 
     return this.taskRepo.save(task);
@@ -114,7 +164,7 @@ export class TasksService {
         project: true,
         createdBy: true,
         assignee: true,
-        boardId: true,
+        boardColumn: true,
         subtasks: true,
         comments: {
           user: true,
@@ -138,36 +188,39 @@ export class TasksService {
         project: true,
         createdBy: true,
         assignee: true,
-        boardId: true,
+        boardColumn: true,
       },
     });
 
     if (!task) throw new NotFoundException('Task not found');
     await this.checkProjectAccess(task.project.id, userId);
 
-    const { assigneeId, boardId, ...scalarFields } = dto;
-
-    const [assignee, board] = await Promise.all([
-      assigneeId ? this.userRepo.findOne({ where: { id: assigneeId } }) : Promise.resolve(undefined),
-      boardId ? this.boardRepo.findOne({ where: { id: boardId } }) : Promise.resolve(undefined),
-    ]);
+    const { assigneeId, boardColumnId, ...scalarFields } = dto;
 
     if (assigneeId !== undefined) {
       if (assigneeId === null) {
         task.assignee = null;
       } else {
+        const assignee = await this.userRepo.findOne({
+          where: { id: assigneeId },
+        });
         if (!assignee) throw new NotFoundException('Assignee not found');
         task.assignee = assignee;
       }
     }
 
-    if (boardId !== undefined) {
-      if (boardId === null) {
-        task.boardId = null;
-      } else {
-        if (!board) throw new NotFoundException('Board column not found');
-        task.boardId = board;
-      }
+    if (boardColumnId !== undefined) {
+      task.boardColumn = await this.resolveBoardColumn(
+        boardColumnId,
+        task.project.id,
+      );
+    }
+
+    if (scalarFields.deadline !== undefined) {
+      task.deadline = scalarFields.deadline
+        ? new Date(scalarFields.deadline)
+        : null;
+      delete scalarFields.deadline;
     }
 
     Object.assign(task, scalarFields);
@@ -223,9 +276,9 @@ export class TasksService {
       throw new NotFoundException('Subtask not found');
     }
 
-    await this.getTask(subtask.task.id, userId);
+    await this.assertTaskAccess(subtask.task.id, userId);
 
-    await this.subtaskRepo.remove(subtask);
+    await this.subtaskRepo.delete(subtask);
   }
 
   // ─── Comments ──────────────────────────────────────────────────────────
