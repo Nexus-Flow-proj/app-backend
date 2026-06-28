@@ -15,7 +15,6 @@ import { UpdateBoardColumnDto } from './dtos/update-board-column.dto';
 import { ReorderBoardColumnsDto } from './dtos/reorder-board-columns.dto';
 import { BoardColumnResponseDto } from './dtos/board-column-response.dto';
 
-
 @Injectable()
 export class BoardsService {
   constructor(
@@ -39,7 +38,6 @@ export class BoardsService {
     }
   }
 
-  // Lightweight column fetch — only loads what is needed for access checks and mutations
   private async getColumnOrFail(columnId: string): Promise<Board> {
     const column = await this.boardRepo.findOne({
       where: { id: columnId },
@@ -80,7 +78,6 @@ export class BoardsService {
   ): Promise<BoardColumnResponseDto> {
     await this.checkProjectAccess(projectId, userId);
 
-    // Check for duplicate name within the project
     const existing = await this.boardRepo.count({
       where: { project: { id: projectId }, name: dto.name },
     });
@@ -90,7 +87,6 @@ export class BoardsService {
       );
     }
 
-    // Auto-assign sortOrder: place after last column if not provided
     let sortOrder = dto.sortOrder;
     if (sortOrder === undefined) {
       const last = await this.boardRepo.findOne({
@@ -105,6 +101,7 @@ export class BoardsService {
       name: dto.name,
       sortOrder,
       isProtected: false,
+      color: dto.color,
       project: { id: projectId } as Project,
     });
 
@@ -122,7 +119,6 @@ export class BoardsService {
     const column = await this.getColumnOrFail(columnId);
     await this.checkProjectAccess(column.project.id, userId);
 
-    // Check for duplicate name within the project if name is being changed
     if (dto.name && dto.name !== column.name) {
       const duplicate = await this.boardRepo.count({
         where: { project: { id: column.project.id }, name: dto.name },
@@ -165,7 +161,6 @@ export class BoardsService {
 
     const columnIds = dto.columns.map((c) => c.id);
 
-    // Verify all referenced columns belong to this project
     const columns = await this.boardRepo.find({
       where: { id: In(columnIds), project: { id: projectId } },
       select: { id: true },
@@ -177,14 +172,12 @@ export class BoardsService {
       );
     }
 
-    // Bulk update sortOrder values
     await Promise.all(
       dto.columns.map((item) =>
         this.boardRepo.update(item.id, { sortOrder: item.sortOrder }),
       ),
     );
 
-    // Return the freshly ordered list
     const updated = await this.boardRepo.find({
       where: { project: { id: projectId } },
       order: { sortOrder: 'ASC' },
@@ -200,6 +193,7 @@ export class BoardsService {
       name: column.name,
       sortOrder: column.sortOrder,
       isProtected: column.isProtected,
+      color: column.color,
       createdAt: column.createdAt,
     };
   }
