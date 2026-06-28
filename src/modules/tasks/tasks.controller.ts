@@ -116,8 +116,23 @@ export class TasksController {
     return { message: 'Subtask updated successfully.', data };
   }
 
-  // ─── Comment Endpoints ─────────────────────────────────
+  @Delete('tasks/:id/subtasks/:sid')
+  @UseGuards(CsrfGuard)
+  @HttpCode(HttpStatus.OK)
+  async deleteSubtask(
+    @Param('id') taskId: string,
+    @Param('sid') subtaskId: string,
+    @CurrentUser() user: User,
+  ) {
+    const data = await this.tasksService.deleteSubtask(
+      taskId,
+      subtaskId,
+      user.id,
+    );
+    return { message: 'Subtask deleted successfully', data };
+  }
 
+  // ─── Comment Endpoints ─────────────────────────────────
   @Post('tasks/:id/comments')
   @UseGuards(CsrfGuard)
   @Serialize(CommentResponseDto)
