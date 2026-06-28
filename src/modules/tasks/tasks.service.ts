@@ -213,6 +213,21 @@ export class TasksService {
     return this.subtaskRepo.save(subtask);
   }
 
+  async deleteSubtask(subtaskId: string, userId: string) {
+    const subtask = await this.subtaskRepo.findOne({
+      where: { id: subtaskId },
+      relations: { task: true },
+    });
+
+    if (!subtask) {
+      throw new NotFoundException('Subtask not found');
+    }
+
+    await this.getTask(subtask.task.id, userId);
+
+    await this.subtaskRepo.remove(subtask);
+  }
+
   // ─── Comments ──────────────────────────────────────────────────────────
 
   async createComment(taskId: string, dto: CreateCommentDto, userId: string) {

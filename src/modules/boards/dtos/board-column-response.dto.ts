@@ -14,5 +14,8 @@ export class BoardColumnResponseDto {
   isProtected!: boolean;
 
   @Expose()
+  color!: string;
+
+  @Expose()
   createdAt!: Date;
 }

@@ -28,6 +28,9 @@ export class Board {
   @Column({ name: 'is_protected', type: 'boolean', default: false })
   isProtected!: boolean;
 
+  @Column({ type: 'varchar' })
+  color!: string;
+
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt!: Date;
 
