@@ -19,7 +19,6 @@ import { SubTask } from './subtask.entity';
 import { TaskComment } from './task-comment.entity';
 import { TimeLog } from './time-log.entity';
 
-
 export interface TaskAttachment {
   id: string;
   name: string;
@@ -87,10 +86,9 @@ export class Task {
   @OneToMany(() => TimeLog, (timeLog) => timeLog.task)
   timeLogs!: TimeLog[];
 
+  @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
+  createdAt: Date;
 
-  @CreateDateColumn({ type: 'timestamptz' })
-  created_at: Date;
-
-  @UpdateDateColumn({ type: 'timestamptz' })
-  updated_at: Date;
+  @UpdateDateColumn({ type: 'timestamptz', name: 'updated_at' })
+  updatedAt: Date;
 }

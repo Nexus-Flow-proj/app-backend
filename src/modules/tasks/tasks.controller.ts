@@ -27,8 +27,16 @@ import {
   SubTaskResponseDto,
   UpdateSubTaskDto,
 } from './dtos/subtask.dto';
-import { CreateCommentDto, CommentResponseDto, PaginatedCommentsDto } from './dtos/comment.dto';
-import { CreateTimeLogDto, TimeLogResponseDto, PaginatedTimeLogsDto } from './dtos/time-log.dto';
+import {
+  CreateCommentDto,
+  CommentResponseDto,
+  PaginatedCommentsDto,
+} from './dtos/comment.dto';
+import {
+  CreateTimeLogDto,
+  TimeLogResponseDto,
+  PaginatedTimeLogsDto,
+} from './dtos/time-log.dto';
 
 @Controller()
 @UseGuards(JwtAuthGuard)
@@ -51,6 +59,16 @@ export class TasksController {
       page,
       limit,
     );
+    return { message: 'Tasks retrieved successfully.', data };
+  }
+
+  @Get('boards/:columnId/tasks')
+  @Serialize(TaskDto)
+  async listTasksByColumn(
+    @Param('columnId') columnId: string,
+    @CurrentUser() user: User,
+  ) {
+    const data = await this.tasksService.listTasksByColumn(columnId, user.id);
     return { message: 'Tasks retrieved successfully.', data };
   }
 
@@ -129,15 +147,10 @@ export class TasksController {
   @UseGuards(CsrfGuard)
   @HttpCode(HttpStatus.OK)
   async deleteSubtask(
-    @Param('id') taskId: string,
     @Param('sid') subtaskId: string,
     @CurrentUser() user: User,
   ) {
-    const data = await this.tasksService.deleteSubtask(
-      taskId,
-      subtaskId,
-      user.id,
-    );
+    const data = await this.tasksService.deleteSubtask(subtaskId, user.id);
     return { message: 'Subtask deleted successfully', data };
   }
 
