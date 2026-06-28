@@ -34,6 +34,6 @@ export class Board {
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt!: Date;
 
-  @OneToMany(() => Task, (task) => task.boardId)
+  @OneToMany(() => Task, (task) => task.boardColumn)
   tasks!: Task[];
 }

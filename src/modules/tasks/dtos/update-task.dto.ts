@@ -41,7 +41,7 @@ export class UpdateTaskDto {
 
   @IsOptional()
   @IsUUID()
-  boardId?: string;
+  boardColumnId?: string;
 
   @IsOptional()
   @IsNumber()
