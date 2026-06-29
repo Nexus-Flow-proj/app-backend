@@ -145,7 +145,6 @@ export class AuthService {
     return this.dataSource.transaction(async (manager) => {
       const stored = await manager.findOne(RefreshToken, {
         where: { tokenHash },
-        relations: { user: true },
         lock: { mode: 'pessimistic_write' },
       });
 
@@ -153,8 +152,17 @@ export class AuthService {
         throw new UnauthorizedException('Invalid or expired refresh token');
       }
 
+      const user = await manager.findOne(User, {
+        where: { id: stored.userId },
+      });
+
+      if (!user) {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+
       await manager.delete(RefreshToken, { tokenHash });
-      return this.generateTokens(stored.user, ip, manager);
+
+      return this.generateTokens(user, ip, manager);
     });
   }
 
@@ -282,7 +290,7 @@ export class AuthService {
 
     const accessToken = this.jwtService.sign(payload, {
       secret: this.configService.get<string>('JWT_ACCESS_TOKEN_SECRET'),
-      expiresIn: '15m',
+      expiresIn: '30m',
     });
 
     const rawRefreshToken = crypto.randomBytes(64).toString('hex');

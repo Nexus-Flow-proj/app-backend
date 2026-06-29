@@ -27,7 +27,7 @@ export function setAuthCookies(res: Response, tokens: TokenPayload): void {
   res.cookie(
     'access_token',
     tokens.accessToken,
-    getCookieOptions(15 * 60 * 1000),
+    getCookieOptions(30 * 60 * 1000),
   );
 
   res.cookie(
@@ -37,7 +37,7 @@ export function setAuthCookies(res: Response, tokens: TokenPayload): void {
   );
 
   res.cookie('csrf_token', tokens.csrfToken, {
-    ...getCookieOptions(15 * 60 * 1000),
+    ...getCookieOptions(60 * 60 * 1000),
     httpOnly: false,
   });
 }
