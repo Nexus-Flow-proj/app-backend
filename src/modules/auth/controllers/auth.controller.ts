@@ -186,7 +186,6 @@ export class AuthController {
       await this.authService.googleLogin(result.user, ip);
 
     setAuthCookies(res, { accessToken, refreshToken, csrfToken }, this.getCookieMaxAgeConfig());
-
     res.redirect(`${frontendUrl}/dashboard`);
   }
 }
