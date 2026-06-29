@@ -8,6 +8,7 @@ import {
   ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
+  UpdateDateColumn,
 } from 'typeorm';
 
 @Entity('board_columns')
@@ -28,9 +29,15 @@ export class Board {
   @Column({ name: 'is_protected', type: 'boolean', default: false })
   isProtected!: boolean;
 
+  @Column({ type: 'varchar' })
+  color!: string;
+
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt!: Date;
 
-  @OneToMany(() => Task, (task) => task.boardId)
+  @UpdateDateColumn({ type: 'timestamptz', name: 'updated_at' })
+  updatedAt!: Date;
+
+  @OneToMany(() => Task, (task) => task.boardColumn)
   tasks!: Task[];
 }

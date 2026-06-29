@@ -1,4 +1,10 @@
-import { IsString, IsNotEmpty, IsNumber, IsOptional, Min } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  Min,
+} from 'class-validator';
 
 export class UpdateBoardColumnDto {
   @IsString()
@@ -10,4 +16,8 @@ export class UpdateBoardColumnDto {
   @IsOptional()
   @Min(0)
   sortOrder?: number;
+
+  @IsString()
+  @IsOptional()
+  color?: string;
 }

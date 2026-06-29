@@ -39,10 +39,6 @@ export class CreateTaskDto {
   priority?: TaskPriority;
 
   @IsOptional()
-  @IsUUID()
-  boardId?: string;
-
-  @IsOptional()
   @IsNumber()
   columnOrder?: number;
 

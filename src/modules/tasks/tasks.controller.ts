@@ -27,8 +27,17 @@ import {
   SubTaskResponseDto,
   UpdateSubTaskDto,
 } from './dtos/subtask.dto';
-import { CreateCommentDto, CommentResponseDto, PaginatedCommentsDto } from './dtos/comment.dto';
-import { CreateTimeLogDto, TimeLogResponseDto, PaginatedTimeLogsDto } from './dtos/time-log.dto';
+import {
+  CreateCommentDto,
+  CommentResponseDto,
+  PaginatedCommentsDto,
+  UpdateCommentDto,
+} from './dtos/comment.dto';
+import {
+  CreateTimeLogDto,
+  TimeLogResponseDto,
+  PaginatedTimeLogsDto,
+} from './dtos/time-log.dto';
 
 @Controller()
 @UseGuards(JwtAuthGuard)
@@ -54,15 +63,31 @@ export class TasksController {
     return { message: 'Tasks retrieved successfully.', data };
   }
 
-  @Post('projects/:projectId/tasks')
+  @Get('boards/:columnId/tasks')
+  @Serialize(TaskDto)
+  async listTasksByColumn(
+    @Param('columnId') columnId: string,
+    @CurrentUser() user: User,
+  ) {
+    const data = await this.tasksService.listTasksByColumn(columnId, user.id);
+    return { message: 'Tasks retrieved successfully.', data };
+  }
+
+  @Post('projects/:projectId/tasks/:boardColumnId')
   @UseGuards(CsrfGuard)
   @Serialize(TaskDto)
   async createTask(
     @Param('projectId') projectId: string,
+    @Param('boardColumnId') boardColumnId: string,
     @Body() body: CreateTaskDto,
     @CurrentUser() user: User,
   ) {
-    const data = await this.tasksService.createTask(projectId, body, user.id);
+    const data = await this.tasksService.createTask(
+      projectId,
+      boardColumnId,
+      body,
+      user.id,
+    );
     return { message: 'Task created successfully.', data };
   }
 
@@ -125,8 +150,18 @@ export class TasksController {
     return { message: 'Subtask updated successfully.', data };
   }
 
-  // ─── Comment Endpoints ─────────────────────────────────
+  @Delete('tasks/:id/subtasks/:sid')
+  @UseGuards(CsrfGuard)
+  @HttpCode(HttpStatus.OK)
+  async deleteSubtask(
+    @Param('sid') subtaskId: string,
+    @CurrentUser() user: User,
+  ) {
+    const data = await this.tasksService.deleteSubtask(subtaskId, user.id);
+    return { message: 'Subtask deleted successfully', data };
+  }
 
+  // ─── Comment Endpoints ─────────────────────────────────
   @Post('tasks/:id/comments')
   @UseGuards(CsrfGuard)
   @Serialize(CommentResponseDto)
@@ -154,6 +189,18 @@ export class TasksController {
       limit,
     );
     return { message: 'Comments retrieved successfully.', data };
+  }
+
+  @Patch('comments/:cid')
+  @UseGuards(CsrfGuard)
+  @Serialize(CommentResponseDto)
+  async updateComment(
+    @Param('cid') commentId: string,
+    @Body() dto: UpdateCommentDto,
+    @CurrentUser() user: User,
+  ) {
+    const data = await this.tasksService.updateComment(commentId, dto, user.id);
+    return { message: 'Comment Updated Successfully', data };
   }
 
   @Delete('comments/:cid')
