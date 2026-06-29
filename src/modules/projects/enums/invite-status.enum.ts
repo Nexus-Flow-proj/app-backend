@@ -3,5 +3,5 @@ export enum InviteStatus {
   PENDING = 'PENDING',
   REJECTED = 'REJECTED',
   CANCELLED = 'CANCELLED',
-  REVOKE = 'REVOKED',
+  REVOKED = 'REVOKED',
 }
