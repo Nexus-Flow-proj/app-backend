@@ -6,7 +6,6 @@ import { InviteStatus } from '../enums/invite-status.enum';
 
 export class GetInvitesQueryDto extends PaginationQueryDto {
   @IsOptional()
-  // 💡 Automatically sanitizes incoming string to uppercase before validation checks it
   @Transform(({ value }) =>
     typeof value === 'string' ? (value.toUpperCase() as InviteStatus) : value,
   )
