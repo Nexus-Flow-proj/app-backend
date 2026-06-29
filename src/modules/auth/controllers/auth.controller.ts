@@ -29,6 +29,7 @@ import { ThrottleKey } from '@shared/decorators/throttle-key.decorator';
 import { ResetPasswordDto } from '../dtos/reset-password.dto';
 import { GoogleAuthGuard } from '@shared/guards/google-auth.guard';
 import { ConfigService } from '@nestjs/config';
+import { EnvConfig } from '../../../config/env.config';
 
 @Controller('auth')
 export class AuthController {
@@ -36,6 +37,10 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly configService: ConfigService,
   ) {}
+
+  private getCookieMaxAgeConfig() {
+    return this.configService.get<EnvConfig>('env')!;
+  }
 
   @Post('signup')
   @ThrottleKey('global')
@@ -47,7 +52,7 @@ export class AuthController {
     const { user, accessToken, refreshToken, csrfToken } =
       await this.authService.signUp(dto, ip);
 
-    setAuthCookies(res, { accessToken, refreshToken, csrfToken });
+    setAuthCookies(res, { accessToken, refreshToken, csrfToken }, this.getCookieMaxAgeConfig());
 
     return {
       message: 'Account registered successfully.',
@@ -66,7 +71,7 @@ export class AuthController {
     const { user, accessToken, refreshToken, csrfToken } =
       await this.authService.login(dto, ip);
 
-    setAuthCookies(res, { accessToken, refreshToken, csrfToken });
+    setAuthCookies(res, { accessToken, refreshToken, csrfToken }, this.getCookieMaxAgeConfig());
 
     return {
       message: 'Login successful.',
@@ -120,7 +125,7 @@ export class AuthController {
       throw new UnauthorizedException('Missing refresh token');
     }
     const tokens = await this.authService.refresh(refreshToken, ip);
-    setAuthCookies(res, tokens);
+    setAuthCookies(res, tokens, this.getCookieMaxAgeConfig());
     return {
       message: 'Token refreshed successfully.',
       data: {},
@@ -162,7 +167,7 @@ export class AuthController {
     const { accessToken, refreshToken, csrfToken } =
       await this.authService.googleLogin(user, ip);
 
-    setAuthCookies(res, { accessToken, refreshToken, csrfToken });
+    setAuthCookies(res, { accessToken, refreshToken, csrfToken }, this.getCookieMaxAgeConfig());
 
     const frontendUrl = this.configService.get<string>('env.frontendUrl');
     res.redirect(`${frontendUrl}/dashboard`);

@@ -5,6 +5,13 @@ export interface TokenPayload {
   refreshToken: string;
   csrfToken: string;
 }
+
+export interface CookieMaxAgeConfig {
+  accessTokenCookieMaxAge: number;
+  refreshTokenCookieMaxAge: number;
+  csrfTokenCookieMaxAge: number;
+}
+
 export interface RequestCookies {
   access_token?: string;
   refresh_token?: string;
@@ -23,21 +30,28 @@ function getCookieOptions(maxAge: number, path?: string) {
   };
 }
 
-export function setAuthCookies(res: Response, tokens: TokenPayload): void {
+export function setAuthCookies(
+  res: Response,
+  tokens: TokenPayload,
+  cookieMaxAgeConfig: CookieMaxAgeConfig,
+): void {
   res.cookie(
     'access_token',
     tokens.accessToken,
-    getCookieOptions(30 * 60 * 1000),
+    getCookieOptions(cookieMaxAgeConfig.accessTokenCookieMaxAge),
   );
 
   res.cookie(
     'refresh_token',
     tokens.refreshToken,
-    getCookieOptions(7 * 24 * 60 * 60 * 1000, '/api/auth'),
+    getCookieOptions(
+      cookieMaxAgeConfig.refreshTokenCookieMaxAge,
+      '/api/auth',
+    ),
   );
 
   res.cookie('csrf_token', tokens.csrfToken, {
-    ...getCookieOptions(60 * 60 * 1000),
+    ...getCookieOptions(cookieMaxAgeConfig.csrfTokenCookieMaxAge),
     httpOnly: false,
   });
 }
