@@ -73,15 +73,21 @@ export class TasksController {
     return { message: 'Tasks retrieved successfully.', data };
   }
 
-  @Post('projects/:projectId/tasks')
+  @Post('projects/:projectId/tasks/:boardColumnId')
   @UseGuards(CsrfGuard)
   @Serialize(TaskDto)
   async createTask(
     @Param('projectId') projectId: string,
+    @Param('boardColumnId') boardColumnId: string,
     @Body() body: CreateTaskDto,
     @CurrentUser() user: User,
   ) {
-    const data = await this.tasksService.createTask(projectId, body, user.id);
+    const data = await this.tasksService.createTask(
+      projectId,
+      boardColumnId,
+      body,
+      user.id,
+    );
     return { message: 'Task created successfully.', data };
   }
 
@@ -194,7 +200,7 @@ export class TasksController {
     @CurrentUser() user: User,
   ) {
     const data = await this.tasksService.updateComment(commentId, dto, user.id);
-    return { message: 'Comment Updated Successfully' };
+    return { message: 'Comment Updated Successfully', data };
   }
 
   @Delete('comments/:cid')

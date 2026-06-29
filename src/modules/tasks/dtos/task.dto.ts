@@ -3,6 +3,8 @@ import { TaskType } from '../enums/task-type.enum';
 import { TaskStatus } from '../enums/task-status.enum';
 import { TaskPriority } from '../enums/task-priority.enum';
 import { TaskAttachment } from '../entities/task.entity';
+import { SubTaskResponseDto } from './subtask.dto';
+import { CommentResponseDto } from './comment.dto';
 
 export class TaskUserDto {
   @Expose()
@@ -68,12 +70,20 @@ export class TaskDto {
   projectId: string;
 
   @Expose()
+  @Type(() => SubTaskResponseDto)
+  subtasks!: SubTaskResponseDto[];
+
+  @Expose()
   @Type(() => BoardColumnInfoDto)
   boardColumn: BoardColumnInfoDto;
 
   @Expose()
   @Type(() => TaskUserDto)
   createdBy: TaskUserDto;
+
+  @Expose()
+  @Type(() => CommentResponseDto)
+  comments!: CommentResponseDto[];
 
   @Expose()
   @Type(() => TaskUserDto)

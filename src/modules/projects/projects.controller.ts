@@ -41,6 +41,7 @@ export class ProjectsController {
   }
 
   @Get()
+  @UseGuards(CsrfGuard)
   @Serialize(ProjectDto)
   async getMyProjects(@CurrentUser() user: User): Promise<any> {
     const data = await this.projectsService.getMyProjects(user.id);
@@ -48,6 +49,7 @@ export class ProjectsController {
   }
 
   @Get(':projectId')
+  @UseGuards(CsrfGuard)
   @Serialize(ProjectDto)
   async getProject(
     @Param('projectId') projectId: string,
@@ -91,6 +93,7 @@ export class ProjectsController {
 
   @Public()
   @Get('invites/:token')
+  @UseGuards(CsrfGuard)
   @Serialize(InviteDto)
   async getInvite(@Param('token') token: string) {
     const data = await this.projectsService.getInvite(token);
@@ -119,6 +122,7 @@ export class ProjectsController {
   }
 
   @Get(':projectId/members')
+  @UseGuards(CsrfGuard)
   @Serialize(ProjectMemberDto)
   async listMembers(
     @Param('projectId') projectId: string,
