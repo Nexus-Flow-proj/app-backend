@@ -23,6 +23,12 @@ export class CommentResponseDto {
   created_at!: Date;
 }
 
+export class UpdateCommentDto {
+  @IsString()
+  @IsNotEmpty()
+  body!: string;
+}
+
 export class PaginatedCommentsDto {
   @Expose()
   @Type(() => CommentResponseDto)

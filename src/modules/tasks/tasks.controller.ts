@@ -31,6 +31,7 @@ import {
   CreateCommentDto,
   CommentResponseDto,
   PaginatedCommentsDto,
+  UpdateCommentDto,
 } from './dtos/comment.dto';
 import {
   CreateTimeLogDto,
@@ -182,6 +183,18 @@ export class TasksController {
       limit,
     );
     return { message: 'Comments retrieved successfully.', data };
+  }
+
+  @Patch('comments/:cid')
+  @UseGuards(CsrfGuard)
+  @Serialize(CommentResponseDto)
+  async updateComment(
+    @Param('cid') commentId: string,
+    @Body() dto: UpdateCommentDto,
+    @CurrentUser() user: User,
+  ) {
+    const data = await this.tasksService.updateComment(commentId, dto, user.id);
+    return { message: 'Comment Updated Successfully' };
   }
 
   @Delete('comments/:cid')

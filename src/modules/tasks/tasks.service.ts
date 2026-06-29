@@ -19,14 +19,13 @@ import { Board } from '@modules/boards/entities/board.entity';
 import { CreateTaskDto } from './dtos/create-task.dto';
 import { UpdateTaskDto } from './dtos/update-task.dto';
 import { CreateSubTaskDto, UpdateSubTaskDto } from './dtos/subtask.dto';
-import { CreateCommentDto } from './dtos/comment.dto';
+import { CreateCommentDto, UpdateCommentDto } from './dtos/comment.dto';
 import { CreateTimeLogDto } from './dtos/time-log.dto';
 
 @Injectable()
 export class TasksService {
   constructor(
     @InjectRepository(Task) private taskRepo: Repository<Task>,
-    @InjectRepository(Project) private projectRepo: Repository<Project>,
     @InjectRepository(User) private userRepo: Repository<User>,
     @InjectRepository(SubTask) private subtaskRepo: Repository<SubTask>,
     @InjectRepository(TimeLog) private timeLogRepo: Repository<TimeLog>,
@@ -75,6 +74,42 @@ export class TasksService {
       );
     }
     return column;
+  }
+
+  private async assertCommentAccess(
+    commentId: string,
+    userId: string,
+    options: { requireOwnership: boolean } = { requireOwnership: true },
+  ): Promise<TaskComment> {
+    const comment = await this.taskCommentRepo
+      .createQueryBuilder('comment')
+      .leftJoinAndSelect('comment.user', 'author')
+      .leftJoinAndSelect('comment.task', 'task')
+      .leftJoinAndSelect('task.project', 'project')
+      .leftJoinAndMapOne(
+        'task.currentUserMembership',
+        ProjectMember,
+        'member',
+        'member.project.id = project.id AND member.user.id = :userId',
+        { userId },
+      )
+      .where('comment.id = :commentId', { commentId })
+      .getOne();
+
+    if (!comment) {
+      throw new NotFoundException('Comment not found');
+    }
+
+    const isMember = !!(comment.task as any).currentUserMembership;
+    if (!isMember) {
+      throw new ForbiddenException('You do not have access to this project');
+    }
+
+    if (options.requireOwnership && comment.user.id !== userId) {
+      throw new ForbiddenException('You can only modify your own comments');
+    }
+
+    return comment;
   }
 
   // ─── Tasks ─────────────────────────────────────────────────────────────
@@ -311,18 +346,24 @@ export class TasksService {
     return { comments, total, page, limit };
   }
 
-  async deleteComment(commentId: string, userId: string) {
-    const comment = await this.taskCommentRepo.findOne({
-      where: { id: commentId },
-      select: { id: true, user: { id: true } },
-      relations: { user: true },
+  async updateComment(
+    commentId: string,
+    dto: UpdateCommentDto,
+    userId: string,
+  ) {
+    const comment = await this.assertCommentAccess(commentId, userId, {
+      requireOwnership: true,
     });
 
-    if (!comment) throw new NotFoundException('Comment not found');
+    comment.body = dto.body;
 
-    if (comment.user.id !== userId) {
-      throw new ForbiddenException('You can only delete your own comments');
-    }
+    return this.taskCommentRepo.save(comment);
+  }
+
+  async deleteComment(commentId: string, userId: string) {
+    await this.assertCommentAccess(commentId, userId, {
+      requireOwnership: true,
+    });
 
     await this.taskCommentRepo.delete({ id: commentId });
   }
