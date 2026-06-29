@@ -30,6 +30,7 @@ import { ResetPasswordDto } from '../dtos/reset-password.dto';
 import { GoogleAuthGuard } from '@shared/guards/google-auth.guard';
 import { ConfigService } from '@nestjs/config';
 import { EnvConfig } from '../../../config/env.config';
+import { GoogleAuthResult } from '../services/auth.service';
 
 @Controller('auth')
 export class AuthController {
@@ -153,23 +154,39 @@ export class AuthController {
     };
   }
 
-  @Get('google')
+  @Get('google/login')
   @UseGuards(GoogleAuthGuard)
   googleLogin(): void {}
+
+  @Get('google/signup')
+  @UseGuards(GoogleAuthGuard)
+  googleSignup(): void {}
 
   @Get('google/callback')
   @UseGuards(GoogleAuthGuard)
   async googleCallback(
-    @CurrentUser() user: User,
+    @CurrentUser() result: GoogleAuthResult,
     @Ip() ip: string,
     @Res({ passthrough: true }) res: Response,
   ) {
+    const frontendUrl = this.configService.get<string>('env.frontendUrl');
+
+    if (!result.ok || !result.user) {
+      const redirectPath =
+        result.flow === 'signup' ? '/signup' : '/login';
+      const errorMessage = encodeURIComponent(
+        result.message ?? 'Google authentication failed.',
+      );
+      return res.redirect(
+        `${frontendUrl}${redirectPath}?googleAuth=failed&message=${errorMessage}`,
+      );
+    }
+
     const { accessToken, refreshToken, csrfToken } =
-      await this.authService.googleLogin(user, ip);
+      await this.authService.googleLogin(result.user, ip);
 
     setAuthCookies(res, { accessToken, refreshToken, csrfToken }, this.getCookieMaxAgeConfig());
 
-    const frontendUrl = this.configService.get<string>('env.frontendUrl');
     res.redirect(`${frontendUrl}/dashboard`);
   }
 }
