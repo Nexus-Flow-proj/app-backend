@@ -193,7 +193,16 @@ export class TasksService {
 
     const [tasks, total] = await this.taskRepo.findAndCount({
       where: { project: { id: projectId } },
+      select: {
+        id: true,
+        title: true,
+        columnOrder: true,
+        project: {
+          id: true,
+        },
+      },
       relations: {
+        project: true,
         createdBy: true,
         assignee: true,
         boardColumn: true,
@@ -208,9 +217,7 @@ export class TasksService {
       take: limit,
       skip: (page - 1) * limit,
     });
-    tasks.forEach((task) => {
-      task.project = { id: projectId } as Project;
-    });
+
     return { tasks, total, page, limit };
   }
 
