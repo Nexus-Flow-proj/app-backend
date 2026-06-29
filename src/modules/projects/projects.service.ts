@@ -201,6 +201,41 @@ export class ProjectsService {
     return { inviteLink };
   }
 
+  async getProjectInvites(
+    projectId: string,
+    userId: string,
+    page = 1,
+    limit = 50,
+    status?: InviteStatus,
+  ): Promise<{
+    invites: Invite[];
+    total: number;
+    page: number;
+    limit: number;
+  }> {
+    const project = await this.loadProjectOrFail(projectId);
+    this.assertProjectAdmin(project, userId);
+
+    const [invites, total] = await this.inviteRepo.findAndCount({
+      where: {
+        project: { id: projectId },
+        ...(status && { status }),
+      },
+      order: { createdAt: 'ASC' },
+      take: limit,
+      skip: (page - 1) * limit,
+    });
+
+    if (total === 0) {
+      const errorMsg = status
+        ? `No invites with status '${status}' were found for this project`
+        : 'No invites were found for this project';
+      throw new NotFoundException(errorMsg);
+    }
+
+    return { invites, total, page, limit };
+  }
+
   async getInvite(token: string): Promise<InviteDto> {
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
 

@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { CreateProjectDto } from './dtos/create-project.dto';
@@ -23,6 +24,11 @@ import { UpdateProjectMemberDto } from './dtos/update-project-member.dto';
 import { InviteDto } from './dtos/invite.dto';
 import { InviteLinkResponseDto } from './dtos/invite-link-response.dto';
 import { Public } from '@shared/decorators/public.decorator';
+import { PaginationQueryDto } from '@shared/dto/pagination-query.dto';
+import {
+  GetInvitesQueryDto,
+  PaginatedInvitesDto,
+} from './dtos/get-invites.dto';
 
 @Controller('projects')
 @UseGuards(JwtAuthGuard)
@@ -89,6 +95,27 @@ export class ProjectsController {
       user.id,
     );
     return { message: 'Invite sent successfully.', data };
+  }
+
+  @Get(':projectId/invites')
+  @UseGuards(CsrfGuard)
+  @Serialize(PaginatedInvitesDto)
+  async getProjectInvites(
+    @Param('projectId') projectId: string,
+    @Query() query: GetInvitesQueryDto,
+    @CurrentUser() user: User,
+  ) {
+    const { page = 1, limit = 50, status } = query;
+
+    const data = await this.projectsService.getProjectInvites(
+      projectId,
+      user.id,
+      page,
+      limit,
+      status,
+    );
+
+    return { message: 'Invites Returned Successfully', data };
   }
 
   @Public()
