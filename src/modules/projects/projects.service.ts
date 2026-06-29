@@ -327,6 +327,60 @@ export class ProjectsService {
     await this.inviteRepo.save(invite);
   }
 
+  async cancelInvite(
+    projectId: string,
+    token: string,
+    userId: string,
+  ): Promise<void> {
+    const project = await this.loadProjectOrFail(projectId);
+    this.assertProjectAdmin(project, userId);
+
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const invite = await this.inviteRepo.findOne({
+      where: { tokenHash, project: { id: projectId } },
+    });
+
+    if (!invite) {
+      throw new NotFoundException('Invitation not found for this project');
+    }
+
+    if (invite.status !== InviteStatus.PENDING) {
+      throw new BadRequestException(
+        `Cannot cancel an invitation that is already ${invite.status.toLowerCase()}`,
+      );
+    }
+
+    invite.status = InviteStatus.CANCELLED;
+    await this.inviteRepo.save(invite);
+  }
+
+  async revokeInvite(
+    projectId: string,
+    token: string,
+    userId: string,
+  ): Promise<void> {
+    const project = await this.loadProjectOrFail(projectId);
+    this.assertProjectAdmin(project, userId);
+
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const invite = await this.inviteRepo.findOne({
+      where: { tokenHash, project: { id: projectId } },
+    });
+
+    if (!invite) {
+      throw new NotFoundException('Invitation not found for this project');
+    }
+
+    if (invite.status !== InviteStatus.PENDING) {
+      throw new BadRequestException(
+        `Cannot revoke an invitation that is already ${invite.status.toLowerCase()}`,
+      );
+    }
+
+    invite.status = InviteStatus.REVOKED;
+    await this.inviteRepo.save(invite);
+  }
+
   async listMembers(
     projectId: string,
     userId: string,
