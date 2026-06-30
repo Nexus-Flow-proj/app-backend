@@ -1,5 +1,11 @@
 import { Expose, Type } from 'class-transformer';
-import { IsDateString, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import {
+  IsDateString,
+  IsInt,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
 import { TaskUserDto } from './task.dto';
 
 export class CreateTimeLogDto {

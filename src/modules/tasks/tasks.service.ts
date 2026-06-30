@@ -448,8 +448,8 @@ export class TasksService {
 
   // ─── Comments ──────────────────────────────────────────────────────────
 
-  async createComment(taskId: string, dto: CreateCommentDto, user: User) {
-    const task = await this.assertTaskAccess(taskId, user.id);
+  async createComment(taskId: string, dto: CreateCommentDto, userId: string) {
+    const task = await this.assertTaskAccess(taskId, userId);
 
     const fullUser = (task as any).currentUserMembership.user;
 
