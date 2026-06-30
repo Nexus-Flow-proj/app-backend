@@ -63,6 +63,7 @@ export class TasksService {
         'member.project.id = project.id AND member.user.id = :userId',
         { userId },
       )
+      .leftJoinAndSelect('member.user', 'memberUser')
       .where('task.id = :taskId', { taskId })
       .getOne();
 
@@ -259,7 +260,8 @@ export class TasksService {
     await this.checkProjectAccess(projectId, userId);
 
     const { assigneeId, assignee: assigneeInput, ...scalarFields } = dto;
-    const resolvedAssigneeId = assigneeInput !== undefined ? assigneeInput : assigneeId;
+    const resolvedAssigneeId =
+      assigneeInput !== undefined ? assigneeInput : assigneeId;
 
     const [assignee, boardColumn] = await Promise.all([
       resolvedAssigneeId
@@ -341,8 +343,14 @@ export class TasksService {
     if (!task) throw new NotFoundException('Task not found');
     await this.checkProjectAccess(task.project.id, userId);
 
-    const { assigneeId, assignee: assigneeInput, boardColumnId, ...scalarFields } = dto;
-    const resolvedAssigneeId = assigneeInput !== undefined ? assigneeInput : assigneeId;
+    const {
+      assigneeId,
+      assignee: assigneeInput,
+      boardColumnId,
+      ...scalarFields
+    } = dto;
+    const resolvedAssigneeId =
+      assigneeInput !== undefined ? assigneeInput : assigneeId;
 
     if (resolvedAssigneeId !== undefined) {
       if (resolvedAssigneeId === null) {
@@ -442,10 +450,12 @@ export class TasksService {
   async createComment(taskId: string, dto: CreateCommentDto, userId: string) {
     const task = await this.assertTaskAccess(taskId, userId);
 
+    const fullUser = (task as any).currentUserMembership.user;
+
     const comment = this.taskCommentRepo.create({
       body: dto.body,
       task,
-      user: { id: userId } as User,
+      user: fullUser,
     });
 
     return this.taskCommentRepo.save(comment);
