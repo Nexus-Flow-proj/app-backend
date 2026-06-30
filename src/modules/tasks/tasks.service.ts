@@ -193,14 +193,6 @@ export class TasksService {
 
     const [tasks, total] = await this.taskRepo.findAndCount({
       where: { project: { id: projectId } },
-      select: {
-        id: true,
-        title: true,
-        columnOrder: true,
-        project: {
-          id: true,
-        },
-      },
       relations: {
         project: true,
         createdBy: true,
@@ -266,11 +258,12 @@ export class TasksService {
   ) {
     await this.checkProjectAccess(projectId, userId);
 
-    const { assigneeId, ...scalarFields } = dto;
+    const { assigneeId, assignee: assigneeInput, ...scalarFields } = dto;
+    const resolvedAssigneeId = assigneeInput !== undefined ? assigneeInput : assigneeId;
 
     const [assignee, boardColumn] = await Promise.all([
-      assigneeId
-        ? this.userRepo.findOne({ where: { id: assigneeId } })
+      resolvedAssigneeId
+        ? this.userRepo.findOne({ where: { id: resolvedAssigneeId } })
         : Promise.resolve(null),
       this.boardRepo.findOne({
         where: { id: boardColumnId },
@@ -278,7 +271,7 @@ export class TasksService {
       }),
     ]);
 
-    if (assigneeId && !assignee)
+    if (resolvedAssigneeId && !assignee)
       throw new NotFoundException('Assignee not found');
     if (!boardColumn) throw new NotFoundException('Board column not found');
     if (boardColumn.project.id !== projectId) {
@@ -348,14 +341,15 @@ export class TasksService {
     if (!task) throw new NotFoundException('Task not found');
     await this.checkProjectAccess(task.project.id, userId);
 
-    const { assigneeId, boardColumnId, ...scalarFields } = dto;
+    const { assigneeId, assignee: assigneeInput, boardColumnId, ...scalarFields } = dto;
+    const resolvedAssigneeId = assigneeInput !== undefined ? assigneeInput : assigneeId;
 
-    if (assigneeId !== undefined) {
-      if (assigneeId === null) {
+    if (resolvedAssigneeId !== undefined) {
+      if (resolvedAssigneeId === null) {
         task.assignee = null;
       } else {
         const assignee = await this.userRepo.findOne({
-          where: { id: assigneeId },
+          where: { id: resolvedAssigneeId },
         });
         if (!assignee) throw new NotFoundException('Assignee not found');
         task.assignee = assignee;

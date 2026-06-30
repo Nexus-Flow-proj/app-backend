@@ -14,18 +14,28 @@ import {
 import { TaskType } from '../enums/task-type.enum';
 import { TaskStatus } from '../enums/task-status.enum';
 import { TaskPriority } from '../enums/task-priority.enum';
+import { TaskSource } from '../enums/task-source.enum';
 import { Board } from '@modules/boards/entities/board.entity';
 import { SubTask } from './subtask.entity';
 import { TaskComment } from './task-comment.entity';
 import { TimeLog } from './time-log.entity';
 
-export interface TaskAttachment {
+export interface ApiUserSummary {
   id: string;
-  name: string;
-  url: string;
-  size: number;
+  email: string;
+  firstName: string;
+  lastName: string;
+  avatarUrl: string | null;
+}
+
+export interface ApiAttachment {
+  id: string;
+  fileName: string;
+  fileUrl: string;
   mimeType: string;
-  uploadedAt: string;
+  size: number;
+  uploadedBy: ApiUserSummary;
+  created_at: string;
 }
 
 @Entity('tasks')
@@ -74,8 +84,11 @@ export class Task {
   @Column({ name: 'column_order', type: 'float' })
   columnOrder: number;
 
+  @Column({ type: 'enum', enum: TaskSource, default: TaskSource.MANUAL })
+  source: TaskSource;
+
   @Column({ type: 'jsonb', default: [] })
-  attachments: TaskAttachment[];
+  attachments: ApiAttachment[];
 
   @OneToMany(() => SubTask, (subtask) => subtask.task)
   subtasks: SubTask[];

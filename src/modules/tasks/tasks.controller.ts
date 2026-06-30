@@ -21,7 +21,7 @@ import { PaginationQueryDto } from '@shared/dto/pagination-query.dto';
 
 import { CreateTaskDto } from './dtos/create-task.dto';
 import { UpdateTaskDto } from './dtos/update-task.dto';
-import { TaskDto, PaginatedTasksDto } from './dtos/task.dto';
+import { TaskDto, PaginatedTasksDto, TaskListDto } from './dtos/task.dto';
 import {
   CreateSubTaskDto,
   SubTaskResponseDto,
@@ -64,7 +64,7 @@ export class TasksController {
   }
 
   @Get('boards/:columnId/tasks')
-  @Serialize(TaskDto)
+  @Serialize(TaskListDto)
   async listTasksByColumn(
     @Param('columnId') columnId: string,
     @CurrentUser() user: User,

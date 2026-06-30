@@ -1,5 +1,11 @@
 import { Expose, Type } from 'class-transformer';
-import { IsDateString, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import {
+  IsDateString,
+  IsInt,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
 import { TaskUserDto } from './task.dto';
 
 export class CreateTimeLogDto {
@@ -13,6 +19,9 @@ export class CreateTimeLogDto {
   @IsOptional()
   @IsString()
   note?: string;
+
+  @Expose()
+  created_at!: Date;
 }
 
 export class TimeLogResponseDto {
@@ -49,4 +58,7 @@ export class PaginatedTimeLogsDto {
 
   @Expose()
   limit!: number;
+
+  @Expose()
+  created_at!: Date;
 }
