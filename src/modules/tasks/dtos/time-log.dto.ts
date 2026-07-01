@@ -1,4 +1,4 @@
-import { Expose, Type } from 'class-transformer';
+import { Expose, Transform, Type } from 'class-transformer';
 import {
   IsDateString,
   IsInt,
@@ -20,8 +20,6 @@ export class CreateTimeLogDto {
   @IsString()
   note?: string;
 
-  @Expose()
-  created_at!: Date;
 }
 
 export class TimeLogResponseDto {
@@ -42,6 +40,7 @@ export class TimeLogResponseDto {
   user!: TaskUserDto;
 
   @Expose()
+  @Transform(({ obj }) => obj.createdAt)
   created_at!: Date;
 }
 
@@ -59,6 +58,4 @@ export class PaginatedTimeLogsDto {
   @Expose()
   limit!: number;
 
-  @Expose()
-  created_at!: Date;
 }
