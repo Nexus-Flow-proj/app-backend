@@ -257,13 +257,25 @@ export class TasksService {
     dto: CreateTaskDto,
     userId: string,
   ) {
-    await this.checkProjectAccess(projectId, userId);
-
     const { assigneeId, assignee: assigneeInput, ...scalarFields } = dto;
     const resolvedAssigneeId =
       assigneeInput !== undefined ? assigneeInput : assigneeId;
 
-    const [assignee, boardColumn] = await Promise.all([
+    const [isMember, currentUser, assignee, boardColumn] = await Promise.all([
+      this.projectMemberRepo.findOne({
+        where: { project: { id: projectId }, user: { id: userId } },
+        select: { id: true },
+      }),
+      this.userRepo.findOne({
+        where: { id: userId },
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          avatarUrl: true,
+        },
+      }),
       resolvedAssigneeId
         ? this.userRepo.findOne({ where: { id: resolvedAssigneeId } })
         : Promise.resolve(null),
@@ -273,9 +285,15 @@ export class TasksService {
       }),
     ]);
 
-    if (resolvedAssigneeId && !assignee)
+    if (!isMember) {
+      throw new ForbiddenException('You do not have access to this project');
+    }
+    if (resolvedAssigneeId && !assignee) {
       throw new NotFoundException('Assignee not found');
-    if (!boardColumn) throw new NotFoundException('Board column not found');
+    }
+    if (!boardColumn) {
+      throw new NotFoundException('Board column not found');
+    }
     if (boardColumn.project.id !== projectId) {
       throw new BadRequestException(
         'The board column does not belong to this project',
@@ -287,9 +305,12 @@ export class TasksService {
       deadline: dto.deadline ? new Date(dto.deadline) : null,
       columnOrder: dto.columnOrder ?? 0,
       project: { id: projectId } as Project,
-      createdBy: { id: userId } as User,
+      createdBy: currentUser!,
       assignee,
       boardColumn,
+      subtasks: [],
+      comments: [],
+      timeLogs: [],
     });
 
     return this.taskRepo.save(task);
