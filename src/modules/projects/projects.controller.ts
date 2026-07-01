@@ -148,25 +148,25 @@ export class ProjectsController {
     return { message: 'Invite declined successfully.' };
   }
 
-  @Post(':projectId/invites/:token/cancel')
+  @Post(':projectId/invites/:inviteId/cancel')
   @UseGuards(CsrfGuard)
   async cancelInvite(
     @Param('projectId') projectId: string,
-    @Param('token') token: string,
+    @Param('inviteId') inviteId: string,
     @CurrentUser() user: User,
   ): Promise<{ message: string }> {
-    await this.projectsService.cancelInvite(projectId, token, user.id);
+    await this.projectsService.cancelInvite(projectId, inviteId, user.id);
     return { message: 'Invite cancelled successfully.' };
   }
 
-  @Delete(':projectId/invites/:token')
+  @Delete(':projectId/invites/:inviteId')
   @UseGuards(CsrfGuard)
   async revokeInvite(
     @Param('projectId') projectId: string,
-    @Param('token') token: string,
+    @Param('inviteId') inviteId: string,
     @CurrentUser() user: User,
   ): Promise<{ message: string }> {
-    await this.projectsService.revokeInvite(projectId, token, user.id);
+    await this.projectsService.revokeInvite(projectId, inviteId, user.id);
     return { message: 'Invite revoked successfully.' };
   }
 

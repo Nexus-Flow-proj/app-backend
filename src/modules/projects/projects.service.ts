@@ -329,15 +329,14 @@ export class ProjectsService {
 
   async cancelInvite(
     projectId: string,
-    token: string,
+    inviteId: string,
     userId: string,
   ): Promise<void> {
     const project = await this.loadProjectOrFail(projectId);
     this.assertProjectAdmin(project, userId);
 
-    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     const invite = await this.inviteRepo.findOne({
-      where: { tokenHash, project: { id: projectId } },
+      where: { id: inviteId, project: { id: projectId } },
     });
 
     if (!invite) {
@@ -356,15 +355,14 @@ export class ProjectsService {
 
   async revokeInvite(
     projectId: string,
-    token: string,
+    inviteId: string,
     userId: string,
   ): Promise<void> {
     const project = await this.loadProjectOrFail(projectId);
     this.assertProjectAdmin(project, userId);
 
-    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     const invite = await this.inviteRepo.findOne({
-      where: { tokenHash, project: { id: projectId } },
+      where: { id: inviteId, project: { id: projectId } },
     });
 
     if (!invite) {
