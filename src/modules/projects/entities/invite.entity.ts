@@ -8,7 +8,7 @@ import {
 } from 'typeorm';
 import { Project } from './project.entity';
 import { User } from '../../users/entities/user.entity';
-import { ProjectRole } from '../enums/project-role.enum';
+import { ProjectRole } from './project-role.entity';
 import { InviteStatus } from '../enums/invite-status.enum';
 
 @Entity('invites')
@@ -29,8 +29,9 @@ export class Invite {
   @Column({ type: 'varchar' })
   email!: string;
 
-  @Column({ type: 'enum', enum: ProjectRole, default: ProjectRole.VIEWER })
-  roleLabel!: ProjectRole;
+  @ManyToOne(() => ProjectRole, { onDelete: 'CASCADE', nullable: false })
+  @JoinColumn({ name: 'role_id' })
+  role!: ProjectRole;
 
   @Column({ type: 'varchar', unique: true })
   tokenHash!: string;

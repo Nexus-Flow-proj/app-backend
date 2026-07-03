@@ -13,7 +13,10 @@ export class InviteCreatedDto {
   email!: string;
 
   @Expose()
-  roleLabel!: ProjectRole;
+  roleId!: string;
+
+  @Expose()
+  roleName!: string;
 
   @Expose()
   status!: InviteStatus;

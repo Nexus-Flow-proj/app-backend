@@ -12,6 +12,7 @@ import {
 import { ProjectMember } from './project-member.entity';
 import { Invite } from './invite.entity';
 import { ProjectStatus } from '../enums/project-status.enum';
+import { ProjectRole } from './project-role.entity';
 
 @Entity('projects')
 export class Project {
@@ -31,7 +32,7 @@ export class Project {
   status!: ProjectStatus;
 
   @Column({ type: 'varchar', default: '#d97706' })
-  color: string;
+  color!: string;
 
   @OneToMany(() => ProjectMember, (member) => member.project)
   members!: ProjectMember[];
@@ -45,6 +46,9 @@ export class Project {
   })
   @JoinColumn({ name: 'admin_id' })
   admin!: User | null;
+
+  @OneToMany(() => ProjectRole, (role) => role.project)
+  roles!: ProjectRole[];
 
   @CreateDateColumn({ type: 'timestamptz' })
   created_at!: Date;

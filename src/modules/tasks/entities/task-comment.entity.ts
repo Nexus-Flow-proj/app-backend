@@ -12,7 +12,7 @@ import { Task } from './task.entity';
 import { User } from '@modules/users/entities/user.entity';
 
 @Entity('task_comments')
-@Index(['task', 'created_at'])
+@Index(['task', 'createdAt'])
 export class TaskComment {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -28,9 +28,9 @@ export class TaskComment {
   @Column({ type: 'text' })
   body: string;
 
-  @CreateDateColumn({ type: 'timestamptz' })
-  created_at: Date;
+  @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
+  createdAt: Date;
 
-  @UpdateDateColumn({ type: 'timestamptz' })
-  updated_at: Date;
+  @UpdateDateColumn({ type: 'timestamptz', name: 'updated_at' })
+  updatedAt: Date;
 }

@@ -4,9 +4,24 @@ import { BoardsService } from './boards.service';
 import { BoardsController } from './boards.controller';
 import { Board } from './entities/board.entity';
 import { ProjectMember } from '@modules/projects/entities/project-member.entity';
+import { ProjectRole } from '@modules/projects/entities/project-role.entity';
+import { Task } from '@modules/tasks/entities/task.entity';
+import { SubTask } from '@modules/tasks/entities/subtask.entity';
+import { TaskComment } from '@modules/tasks/entities/task-comment.entity';
+import { TimeLog } from '@modules/tasks/entities/time-log.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Board, ProjectMember])],
+  imports: [
+    TypeOrmModule.forFeature([
+      Board,
+      ProjectMember,
+      ProjectRole,
+      Task,
+      SubTask,
+      TaskComment,
+      TimeLog,
+    ]),
+  ],
   providers: [BoardsService],
   controllers: [BoardsController],
   exports: [TypeOrmModule],

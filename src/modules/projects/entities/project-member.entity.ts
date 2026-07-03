@@ -9,7 +9,7 @@ import {
 } from 'typeorm';
 import { Project } from './project.entity';
 import { User } from '../../users/entities/user.entity';
-import { ProjectRole } from '../enums/project-role.enum';
+import { ProjectRole } from './project-role.entity';
 
 @Entity('project_members')
 @Unique(['project', 'user'])
@@ -29,11 +29,15 @@ export class ProjectMember {
   @JoinColumn({ name: 'user_id' })
   user!: User;
 
-  @Column({ type: 'enum', enum: ProjectRole, default: ProjectRole.VIEWER })
-  roleLabel!: ProjectRole;
+  // @Column({ type: 'enum', enum: ProjectRole, default: ProjectRole.VIEWER })
+  // roleLabel!: ProjectRole;
 
-  @Column({ default: false })
-  isAdmin!: boolean;
+  @ManyToOne(() => ProjectRole, { onDelete: 'RESTRICT', nullable: false })
+  @JoinColumn({ name: 'role_id' })
+  role!: ProjectRole;
+
+  // @Column({ default: false })
+  // isAdmin!: boolean;
 
   @CreateDateColumn({ name: 'joined_at' })
   joinedAt!: Date;

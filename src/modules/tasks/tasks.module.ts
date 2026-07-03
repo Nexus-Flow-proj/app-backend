@@ -10,6 +10,7 @@ import { Project } from '@modules/projects/entities/project.entity';
 import { ProjectMember } from '@modules/projects/entities/project-member.entity';
 import { User } from '@modules/users/entities/user.entity';
 import { Board } from '@modules/boards/entities/board.entity';
+import { ProjectRole } from '@modules/projects/entities/project-role.entity';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { Board } from '@modules/boards/entities/board.entity';
       ProjectMember,
       User,
       Board,
+      ProjectRole,
     ]),
   ],
   controllers: [TasksController],

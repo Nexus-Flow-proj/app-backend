@@ -1,7 +1,6 @@
 import {
   Injectable,
   NotFoundException,
-  ForbiddenException,
   BadRequestException,
   ConflictException,
 } from '@nestjs/common';
@@ -9,7 +8,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { Board } from './entities/board.entity';
 import { Project } from '@modules/projects/entities/project.entity';
-import { ProjectMember } from '@modules/projects/entities/project-member.entity';
 import { CreateBoardColumnDto } from './dtos/create-board-column.dto';
 import { UpdateBoardColumnDto } from './dtos/update-board-column.dto';
 import { ReorderBoardColumnsDto } from './dtos/reorder-board-columns.dto';
@@ -20,23 +18,9 @@ export class BoardsService {
   constructor(
     @InjectRepository(Board)
     private boardRepo: Repository<Board>,
-    @InjectRepository(ProjectMember)
-    private projectMemberRepo: Repository<ProjectMember>,
   ) {}
 
-  // ─── Access Control ──────────────────────────────────────────────────────
-
-  private async checkProjectAccess(
-    projectId: string,
-    userId: string,
-  ): Promise<void> {
-    const count = await this.projectMemberRepo.count({
-      where: { project: { id: projectId }, user: { id: userId } },
-    });
-    if (count === 0) {
-      throw new ForbiddenException('You do not have access to this project');
-    }
-  }
+  // ─── Helpers ─────────────────────────────────────────────────────────────
 
   private async getColumnOrFail(columnId: string): Promise<Board> {
     const column = await this.boardRepo.findOne({
@@ -59,9 +43,7 @@ export class BoardsService {
 
   async listColumns(
     projectId: string,
-    userId: string,
   ): Promise<BoardColumnResponseDto[]> {
-    await this.checkProjectAccess(projectId, userId);
     const columns = await this.boardRepo.find({
       where: { project: { id: projectId } },
       order: { sortOrder: 'ASC' },
@@ -74,10 +56,7 @@ export class BoardsService {
   async createColumn(
     projectId: string,
     dto: CreateBoardColumnDto,
-    userId: string,
   ): Promise<BoardColumnResponseDto> {
-    await this.checkProjectAccess(projectId, userId);
-
     const existing = await this.boardRepo.count({
       where: { project: { id: projectId }, name: dto.name },
     });
@@ -114,10 +93,8 @@ export class BoardsService {
   async updateColumn(
     columnId: string,
     dto: UpdateBoardColumnDto,
-    userId: string,
   ): Promise<BoardColumnResponseDto> {
     const column = await this.getColumnOrFail(columnId);
-    await this.checkProjectAccess(column.project.id, userId);
 
     if (dto.name && dto.name !== column.name) {
       const duplicate = await this.boardRepo.count({
@@ -137,9 +114,8 @@ export class BoardsService {
 
   // ─── Delete ──────────────────────────────────────────────────────────────
 
-  async deleteColumn(columnId: string, userId: string): Promise<void> {
+  async deleteColumn(columnId: string): Promise<void> {
     const column = await this.getColumnOrFail(columnId);
-    await this.checkProjectAccess(column.project.id, userId);
 
     if (column.isProtected) {
       throw new BadRequestException(
@@ -155,10 +131,7 @@ export class BoardsService {
   async reorderColumns(
     projectId: string,
     dto: ReorderBoardColumnsDto,
-    userId: string,
   ): Promise<BoardColumnResponseDto[]> {
-    await this.checkProjectAccess(projectId, userId);
-
     const columnIds = dto.columns.map((c) => c.id);
 
     const columns = await this.boardRepo.find({

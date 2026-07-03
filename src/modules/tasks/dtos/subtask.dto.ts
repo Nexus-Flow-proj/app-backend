@@ -1,4 +1,4 @@
-import { Expose } from 'class-transformer';
+import { Expose, Transform } from 'class-transformer';
 import { IsBoolean, IsOptional, IsString } from 'class-validator';
 
 export class CreateSubTaskDto {
@@ -30,8 +30,10 @@ export class SubTaskResponseDto {
   sortOrder!: number;
 
   @Expose()
+  @Transform(({ obj }) => obj.createdAt)
   created_at!: Date;
 
   @Expose()
+  @Transform(({ obj }) => obj.updatedAt)
   updated_at!: Date;
 }

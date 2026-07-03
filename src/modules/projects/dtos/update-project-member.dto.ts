@@ -1,7 +1,6 @@
-import { IsEnum } from 'class-validator';
-import { ProjectRole } from '../enums/project-role.enum';
+import { IsUUID } from 'class-validator';
 
 export class UpdateProjectMemberDto {
-  @IsEnum(ProjectRole)
-  roleLabel!: ProjectRole;
+  @IsUUID()
+  roleId!: string;
 }

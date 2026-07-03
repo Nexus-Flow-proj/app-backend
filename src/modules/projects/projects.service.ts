@@ -13,9 +13,10 @@ import { CreateProjectDto } from './dtos/create-project.dto';
 import { User } from '../users/entities/user.entity';
 import { ProjectMember } from './entities/project-member.entity';
 import { Invite } from './entities/invite.entity';
+import { ProjectRole as ProjectRoleEntity } from './entities/project-role.entity';
 import crypto from 'crypto';
 import { ProjectStatus } from './enums/project-status.enum';
-import { ProjectRole } from './enums/project-role.enum';
+import { ProjectRole as ProjectRoleEnum } from './enums/project-role.enum';
 import { InviteStatus } from './enums/invite-status.enum';
 import { UpdateProjectDto } from './dtos/update-project.dto';
 import { InviteMemberDto } from './dtos/invite-member.dto';
@@ -26,6 +27,139 @@ import { InviteDto } from './dtos/invite.dto';
 import { ProjectMemberDto } from './dtos/project-member.dto';
 import { MailService } from '../../shared/providers/mail/mail.service';
 import { ConfigService } from '@nestjs/config';
+import {
+  CreateProjectRoleDto,
+  UpdateProjectRoleDto,
+  ProjectRoleResponseDto,
+} from './dtos/role.dto';
+
+export const DEFAULT_ROLE_PRESETS = [
+  {
+    name: 'Admin',
+    level: 100,
+    description: 'Full permissions',
+    isSystemRole: true,
+    permissions: {
+      project: { read: true, updateSettings: true, deleteProject: true },
+      members: { invite: true, remove: true, changeRoles: true },
+      tasks: {
+        create: true,
+        read: true,
+        update: true,
+        delete: true,
+        assign: true,
+      },
+      workshop: {
+        read: true,
+        createNodes: true,
+        updateNodes: true,
+        deleteNodes: true,
+        generateWithAi: true,
+      },
+      board: { read: true, moveTasks: true, manageColumns: true },
+    },
+  },
+  {
+    name: 'Project Manager',
+    level: 80,
+    description: 'Manage members, tasks, and boards',
+    isSystemRole: true,
+    permissions: {
+      project: { read: true, updateSettings: false, deleteProject: false },
+      members: { invite: true, remove: true, changeRoles: true },
+      tasks: {
+        create: true,
+        read: true,
+        update: true,
+        delete: true,
+        assign: true,
+      },
+      workshop: {
+        read: true,
+        createNodes: true,
+        updateNodes: true,
+        deleteNodes: true,
+        generateWithAi: true,
+      },
+      board: { read: true, moveTasks: true, manageColumns: true },
+    },
+  },
+  {
+    name: 'Team Lead',
+    level: 60,
+    description: 'Manage tasks and edit lower-level work',
+    isSystemRole: true,
+    permissions: {
+      project: { read: true, updateSettings: false, deleteProject: false },
+      members: { invite: true, remove: false, changeRoles: false },
+      tasks: {
+        create: true,
+        read: true,
+        update: true,
+        delete: true,
+        assign: true,
+      },
+      workshop: {
+        read: true,
+        createNodes: true,
+        updateNodes: true,
+        deleteNodes: true,
+        generateWithAi: false,
+      },
+      board: { read: true, moveTasks: true, manageColumns: false },
+    },
+  },
+  {
+    name: 'Member',
+    level: 40,
+    description: 'Create and update own tasks',
+    isSystemRole: false,
+    permissions: {
+      project: { read: true, updateSettings: false, deleteProject: false },
+      members: { invite: false, remove: false, changeRoles: false },
+      tasks: {
+        create: true,
+        read: true,
+        update: true,
+        delete: false,
+        assign: true,
+      },
+      workshop: {
+        read: true,
+        createNodes: true,
+        updateNodes: true,
+        deleteNodes: false,
+        generateWithAi: false,
+      },
+      board: { read: true, moveTasks: true, manageColumns: false },
+    },
+  },
+  {
+    name: 'Viewer',
+    level: 20,
+    description: 'Read-only access',
+    isSystemRole: false,
+    permissions: {
+      project: { read: true, updateSettings: false, deleteProject: false },
+      members: { invite: false, remove: false, changeRoles: false },
+      tasks: {
+        create: false,
+        read: true,
+        update: false,
+        delete: false,
+        assign: false,
+      },
+      workshop: {
+        read: true,
+        createNodes: false,
+        updateNodes: false,
+        deleteNodes: false,
+        generateWithAi: false,
+      },
+      board: { read: true, moveTasks: false, manageColumns: false },
+    },
+  },
+] as const;
 
 @Injectable()
 export class ProjectsService {
@@ -35,6 +169,8 @@ export class ProjectsService {
     private projectMemberRepo: Repository<ProjectMember>,
     @InjectRepository(Invite) private inviteRepo: Repository<Invite>,
     @InjectRepository(User) private userRepo: Repository<User>,
+    @InjectRepository(ProjectRoleEntity)
+    private projectRoleRepo: Repository<ProjectRoleEntity>,
     private mailService: MailService,
     private configService: ConfigService,
   ) {}
@@ -45,27 +181,41 @@ export class ProjectsService {
       throw new UnauthorizedException('User not found');
     }
 
-    const project = this.projectRepo.create({
-      name: body.name,
-      description: body.description ?? null,
-      deadline: body.deadline ? new Date(body.deadline) : null,
-      status: body.status ?? ProjectStatus.ACTIVE,
-      color: body.color,
-      admin: owner,
+    return this.projectRepo.manager.transaction(async (manager) => {
+      const project = manager.create(Project, {
+        name: body.name,
+        description: body.description ?? null,
+        deadline: body.deadline ? new Date(body.deadline) : null,
+        status: body.status ?? ProjectStatus.ACTIVE,
+        color: body.color,
+        admin: owner,
+      });
+
+      const savedProject = await manager.save(Project, project);
+
+      const rolesToCreate = DEFAULT_ROLE_PRESETS.map((preset) =>
+        manager.create(ProjectRoleEntity, {
+          ...preset,
+          project: savedProject,
+        }),
+      );
+      const savedRoles = await manager.save(ProjectRoleEntity, rolesToCreate);
+      const adminRole = savedRoles.find((role) => role.level === 100);
+
+      if (!adminRole) {
+        throw new NotFoundException('Default admin role could not be created');
+      }
+
+      await manager.save(
+        manager.create(ProjectMember, {
+          project: savedProject,
+          user: owner,
+          role: adminRole,
+        }),
+      );
+
+      return this.toProjectView(savedProject, 1, owner.id);
     });
-
-    const savedProject = await this.projectRepo.save(project);
-
-    await this.projectMemberRepo.save(
-      this.projectMemberRepo.create({
-        project: savedProject,
-        user: owner,
-        roleLabel: ProjectRole.OWNER,
-        isAdmin: true,
-      }),
-    );
-
-    return this.toProjectView(savedProject, 1, owner.id);
   }
 
   async getMyProjects(userId: string): Promise<ProjectDto[]> {
@@ -74,7 +224,8 @@ export class ProjectsService {
       .leftJoinAndSelect('project.admin', 'admin')
       .leftJoinAndSelect('project.members', 'member')
       .leftJoinAndSelect('member.user', 'memberUser')
-      .where('project.admin_id = :userId', { userId })
+      .leftJoinAndSelect('member.role', 'memberRole')
+      .where('admin.id = :userId', { userId })
       .orWhere(
         'project.id IN (SELECT pm.project_id FROM project_members pm WHERE pm.user_id = :userId)',
         { userId },
@@ -91,9 +242,8 @@ export class ProjectsService {
     );
   }
 
-  async getProject(projectId: string, userId: string): Promise<ProjectDto> {
+  async getProject(projectId: string): Promise<ProjectDto> {
     const project = await this.loadProjectOrFail(projectId);
-    this.assertProjectAccess(project, userId);
 
     return this.toProjectView(
       project,
@@ -105,10 +255,8 @@ export class ProjectsService {
   async updateProject(
     projectId: string,
     body: UpdateProjectDto,
-    userId: string,
   ): Promise<ProjectDto> {
     const project = await this.loadProjectOrFail(projectId);
-    this.assertProjectAdmin(project, userId);
 
     if (body.name !== undefined) project.name = body.name;
     if (body.description !== undefined) {
@@ -132,13 +280,21 @@ export class ProjectsService {
   async inviteMember(
     projectId: string,
     body: InviteMemberDto,
-    userId: string,
+    actor: ProjectMember,
   ): Promise<{ inviteLink: string }> {
     const project = await this.loadProjectOrFail(projectId);
-    this.assertProjectAdmin(project, userId);
-
     const normalizedEmail = body.email.trim().toLowerCase();
-    const roleLabel = body.roleLabel ?? ProjectRole.VIEWER;
+
+    const roleCondition = body.roleId
+      ? { id: body.roleId, project: { id: project.id } }
+      : { name: 'Viewer', project: { id: project.id } };
+
+    const targetRole = await this.projectRoleRepo.findOne({
+      where: roleCondition,
+    });
+    if (!targetRole) {
+      throw new NotFoundException('Selected project role not found');
+    }
 
     const existingMember = await this.projectMemberRepo
       .createQueryBuilder('member')
@@ -171,9 +327,9 @@ export class ProjectsService {
 
     const invite = this.inviteRepo.create({
       project,
-      invitedBy: project.admin!,
+      invitedBy: actor.user,
       email: normalizedEmail,
-      roleLabel,
+      role: targetRole,
       tokenHash,
       status: InviteStatus.PENDING,
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
@@ -181,19 +337,18 @@ export class ProjectsService {
 
     const savedInvite = await this.inviteRepo.save(invite);
 
-    const inviterName = [project.admin?.firstName, project.admin?.lastName]
+    const inviterName = [actor.user?.firstName, actor.user?.lastName]
       .filter(Boolean)
       .join(' ')
       .trim();
 
     const frontendUrl = this.configService.get<string>('env.frontendUrl');
-
     const inviteLink = `${frontendUrl}/invite/${token}`;
 
     await this.mailService.sendProjectInvite(
       normalizedEmail,
       project.name,
-      inviterName || 'A project admin',
+      inviterName || 'A project member',
       inviteLink,
       savedInvite.expiresAt,
     );
@@ -203,7 +358,6 @@ export class ProjectsService {
 
   async getProjectInvites(
     projectId: string,
-    userId: string,
     page = 1,
     limit = 50,
     status?: InviteStatus,
@@ -213,14 +367,12 @@ export class ProjectsService {
     page: number;
     limit: number;
   }> {
-    const project = await this.loadProjectOrFail(projectId);
-    this.assertProjectAdmin(project, userId);
-
     const [invites, total] = await this.inviteRepo.findAndCount({
       where: {
         project: { id: projectId },
         ...(status && { status }),
       },
+      relations: { project: true, role: true },
       order: { createdAt: 'ASC' },
       take: limit,
       skip: (page - 1) * limit,
@@ -241,7 +393,7 @@ export class ProjectsService {
 
     const invite = await this.inviteRepo.findOne({
       where: { tokenHash },
-      relations: { project: true },
+      relations: { project: true, role: true },
     });
 
     if (!invite) {
@@ -270,7 +422,7 @@ export class ProjectsService {
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     const invite = await this.inviteRepo.findOne({
       where: { tokenHash },
-      relations: { project: { admin: true }, invitedBy: true },
+      relations: { project: { admin: true }, invitedBy: true, role: true },
     });
 
     if (!invite || invite.status !== InviteStatus.PENDING) {
@@ -280,7 +432,9 @@ export class ProjectsService {
       throw new BadRequestException('Invite has expired');
     }
     if (invite.email.toLowerCase() !== user.email.toLowerCase()) {
-      throw new ForbiddenException('Invite does not belong to this user');
+      throw new ForbiddenException(
+        'This invitation was issued to a different email address',
+      );
     }
 
     const existingMember = await this.projectMemberRepo.findOne({
@@ -288,7 +442,7 @@ export class ProjectsService {
         project: { id: invite.project.id },
         user: { id: user.id },
       },
-      relations: { project: true, user: true },
+      relations: { project: true, user: true, role: true },
     });
 
     if (existingMember) {
@@ -300,15 +454,25 @@ export class ProjectsService {
     const member = this.projectMemberRepo.create({
       project: invite.project,
       user,
-      roleLabel: invite.roleLabel,
-      isAdmin: invite.roleLabel === ProjectRole.OWNER,
+      role: invite.role,
     });
     const savedMember = await this.projectMemberRepo.save(member);
 
     invite.status = InviteStatus.ACCEPTED;
     await this.inviteRepo.save(invite);
 
-    return this.toMemberView(savedMember);
+    const hydratedMember = await this.projectMemberRepo.findOne({
+      where: { id: savedMember.id },
+      relations: { project: true, user: true, role: true },
+    });
+
+    if (!hydratedMember) {
+      throw new NotFoundException(
+        'Project member not found after invite acceptance',
+      );
+    }
+
+    return this.toMemberView(hydratedMember);
   }
 
   async declineInvite(token: string, userId: string): Promise<void> {
@@ -327,14 +491,7 @@ export class ProjectsService {
     await this.inviteRepo.save(invite);
   }
 
-  async cancelInvite(
-    projectId: string,
-    inviteId: string,
-    userId: string,
-  ): Promise<void> {
-    const project = await this.loadProjectOrFail(projectId);
-    this.assertProjectAdmin(project, userId);
-
+  async cancelInvite(projectId: string, inviteId: string): Promise<void> {
     const invite = await this.inviteRepo.findOne({
       where: { id: inviteId, project: { id: projectId } },
     });
@@ -353,14 +510,7 @@ export class ProjectsService {
     await this.inviteRepo.save(invite);
   }
 
-  async revokeInvite(
-    projectId: string,
-    inviteId: string,
-    userId: string,
-  ): Promise<void> {
-    const project = await this.loadProjectOrFail(projectId);
-    this.assertProjectAdmin(project, userId);
-
+  async revokeInvite(projectId: string, inviteId: string): Promise<void> {
     const invite = await this.inviteRepo.findOne({
       where: { id: inviteId, project: { id: projectId } },
     });
@@ -379,16 +529,10 @@ export class ProjectsService {
     await this.inviteRepo.save(invite);
   }
 
-  async listMembers(
-    projectId: string,
-    userId: string,
-  ): Promise<ProjectMemberDto[]> {
-    const project = await this.loadProjectOrFail(projectId);
-    this.assertProjectAccess(project, userId);
-
+  async listMembers(projectId: string): Promise<ProjectMemberDto[]> {
     const members = await this.projectMemberRepo.find({
-      where: { project: { id: project.id } },
-      relations: { project: true, user: true },
+      where: { project: { id: projectId } },
+      relations: { project: true, user: true, role: true },
       order: { joinedAt: 'ASC' },
     });
 
@@ -399,52 +543,34 @@ export class ProjectsService {
     projectId: string,
     memberId: string,
     body: UpdateProjectMemberDto,
-    userId: string,
   ): Promise<ProjectMemberDto> {
-    const project = await this.loadProjectOrFail(projectId);
-    this.assertProjectAdmin(project, userId);
-
     const member = await this.projectMemberRepo.findOne({
-      where: { id: memberId, project: { id: project.id } },
-      relations: { project: true, user: true },
+      where: { id: memberId, project: { id: projectId } },
+      relations: { project: true, user: true, role: true },
     });
     if (!member) {
       throw new NotFoundException('Project member not found');
     }
 
-    if (
-      this.isProjectOwnerMember(member) &&
-      body.roleLabel !== ProjectRole.OWNER
-    ) {
-      throw new BadRequestException(
-        'Project owner role cannot be downgraded here',
-      );
+    const targetRole = await this.projectRoleRepo.findOne({
+      where: { id: body.roleId, project: { id: projectId } },
+    });
+    if (!targetRole) {
+      throw new NotFoundException('Target role not found in this project');
     }
 
-    member.roleLabel = body.roleLabel;
-    member.isAdmin = body.roleLabel === ProjectRole.OWNER;
+    member.role = targetRole;
 
     const savedMember = await this.projectMemberRepo.save(member);
     return this.toMemberView(savedMember);
   }
 
-  async removeMember(
-    projectId: string,
-    memberId: string,
-    userId: string,
-  ): Promise<void> {
-    const project = await this.loadProjectOrFail(projectId);
-    this.assertProjectAdmin(project, userId);
-
+  async removeMember(projectId: string, memberId: string): Promise<void> {
     const member = await this.projectMemberRepo.findOne({
-      where: { id: memberId, project: { id: project.id } },
-      relations: { project: true, user: true },
+      where: { id: memberId, project: { id: projectId } },
     });
     if (!member) {
       throw new NotFoundException('Project member not found');
-    }
-    if (this.isProjectOwnerMember(member)) {
-      throw new BadRequestException('Project owner cannot be removed');
     }
 
     await this.projectMemberRepo.delete(member.id);
@@ -453,7 +579,7 @@ export class ProjectsService {
   private async loadProjectOrFail(projectId: string): Promise<Project> {
     const project = await this.projectRepo.findOne({
       where: { id: projectId },
-      relations: { admin: true, members: { user: true } },
+      relations: { admin: true, members: { user: true, role: true } },
     });
 
     if (!project) {
@@ -461,31 +587,6 @@ export class ProjectsService {
     }
 
     return project;
-  }
-
-  private assertProjectAccess(project: Project, userId: string): void {
-    if (project.admin?.id === userId) return;
-
-    const isMember = project.members?.some(
-      (member) => member.user.id === userId,
-    );
-    if (!isMember) {
-      throw new ForbiddenException('You do not have access to this project');
-    }
-  }
-
-  private assertProjectAdmin(project: Project, userId: string): void {
-    if (project.admin?.id === userId) return;
-
-    const isAdminMember = project.members?.some(
-      (member) =>
-        member.user.id === userId && this.isProjectOwnerMember(member),
-    );
-    if (!isAdminMember) {
-      throw new ForbiddenException(
-        'Only project admins can perform this action',
-      );
-    }
   }
 
   private toProjectView(
@@ -517,8 +618,9 @@ export class ProjectsService {
       lastName: member.user.lastName,
       title: member.user.title ?? null,
       avatarUrl: member.user.avatarUrl ?? null,
-      roleLabel: member.roleLabel,
-      isAdmin: member.isAdmin,
+      roleLabel:
+        (member.role?.name as ProjectRoleEnum) ?? ProjectRoleEnum.VIEWER,
+      isAdmin: member.role?.level === 100,
       joinedAt: member.joinedAt,
     };
   }
@@ -529,21 +631,211 @@ export class ProjectsService {
       projectId: invite.project.id,
       projectName: invite.project.name,
       email: invite.email,
-      roleLabel: invite.roleLabel,
+      roleId: invite.role.id,
+      roleName: invite.role.name,
       status: invite.status,
       createdAt: invite.createdAt,
       expiresAt: invite.expiresAt,
     };
   }
 
-  private toCreatedInviteView(invite: Invite, token: string): InviteCreatedDto {
-    return {
-      ...this.toInviteView(invite),
-      token,
-    };
+  // ─── Project Roles CRUD ────────────────────────────────────────────────
+
+  async listRoles(projectId: string): Promise<ProjectRoleResponseDto[]> {
+    const roles = await this.projectRoleRepo.find({
+      where: { project: { id: projectId } },
+      order: { level: 'DESC' },
+    });
+    return roles.map((role) => this.toRoleResponseView(role));
   }
 
-  private isProjectOwnerMember(member: ProjectMember): boolean {
-    return member.isAdmin || member.roleLabel === ProjectRole.OWNER;
+  async createRole(
+    projectId: string,
+    dto: CreateProjectRoleDto,
+    actor: ProjectMember,
+  ): Promise<ProjectRoleResponseDto> {
+    const project = await this.loadProjectOrFail(projectId);
+
+    // Validate level boundaries
+    if (dto.level < 1 || dto.level > 99) {
+      throw new BadRequestException(
+        'Custom role level must be between 1 and 99',
+      );
+    }
+
+    // Enforce hierarchy boundary
+    if (actor.role.level !== 100 && dto.level >= actor.role.level) {
+      throw new ForbiddenException(
+        'You cannot create a role with a level equal to or higher than your own',
+      );
+    }
+
+    // Name uniqueness
+    const existingName = await this.projectRoleRepo.findOne({
+      where: { project: { id: projectId }, name: dto.name },
+    });
+    if (existingName) {
+      throw new ConflictException(
+        'A role with this name already exists in this project',
+      );
+    }
+
+    // Level uniqueness
+    const existingLevel = await this.projectRoleRepo.findOne({
+      where: { project: { id: projectId }, level: dto.level },
+    });
+    if (existingLevel) {
+      throw new ConflictException(
+        'A role with this level already exists in this project',
+      );
+    }
+
+    const role = this.projectRoleRepo.create({
+      ...dto,
+      project,
+      isSystemRole: false,
+    });
+
+    const savedRole = await this.projectRoleRepo.save(role);
+    return this.toRoleResponseView(savedRole);
+  }
+
+  async updateRole(
+    projectId: string,
+    roleId: string,
+    dto: UpdateProjectRoleDto,
+    actor: ProjectMember,
+  ): Promise<ProjectRoleResponseDto> {
+    const role = await this.projectRoleRepo.findOne({
+      where: { id: roleId, project: { id: projectId } },
+    });
+    if (!role) {
+      throw new NotFoundException('Project role not found');
+    }
+
+    if (role.isSystemRole) {
+      throw new BadRequestException('System roles cannot be modified');
+    }
+
+    // Actor must dominate original role level
+    if (actor.role.level !== 100 && role.level >= actor.role.level) {
+      throw new ForbiddenException(
+        'You cannot modify a role with a level equal to or higher than your own',
+      );
+    }
+
+    if (dto.level !== undefined) {
+      if (dto.level < 1 || dto.level > 99) {
+        throw new BadRequestException(
+          'Custom role level must be between 1 and 99',
+        );
+      }
+      // Actor must dominate new role level
+      if (actor.role.level !== 100 && dto.level >= actor.role.level) {
+        throw new ForbiddenException(
+          'You cannot assign a level equal to or higher than your own',
+        );
+      }
+
+      if (dto.level !== role.level) {
+        const existingLevel = await this.projectRoleRepo.findOne({
+          where: { project: { id: projectId }, level: dto.level },
+        });
+        if (existingLevel) {
+          throw new ConflictException(
+            'A role with this level already exists in this project',
+          );
+        }
+        role.level = dto.level;
+      }
+    }
+
+    if (dto.name !== undefined && dto.name !== role.name) {
+      const existingName = await this.projectRoleRepo.findOne({
+        where: { project: { id: projectId }, name: dto.name },
+      });
+      if (existingName) {
+        throw new ConflictException(
+          'A role with this name already exists in this project',
+        );
+      }
+      role.name = dto.name;
+    }
+
+    if (dto.description !== undefined) {
+      role.description = dto.description;
+    }
+
+    if (dto.permissions !== undefined) {
+      role.permissions = dto.permissions;
+    }
+
+    const savedRole = await this.projectRoleRepo.save(role);
+    return this.toRoleResponseView(savedRole);
+  }
+
+  async deleteRole(
+    projectId: string,
+    roleId: string,
+    actor: ProjectMember,
+  ): Promise<void> {
+    const role = await this.projectRoleRepo.findOne({
+      where: { id: roleId, project: { id: projectId } },
+    });
+    if (!role) {
+      throw new NotFoundException('Project role not found');
+    }
+
+    if (role.isSystemRole) {
+      throw new BadRequestException('System roles cannot be deleted');
+    }
+
+    // Actor must dominate role level
+    if (actor.role.level !== 100 && role.level >= actor.role.level) {
+      throw new ForbiddenException(
+        'You cannot delete a role with a level equal to or higher than your own',
+      );
+    }
+
+    // Check if role is used by project members
+    const memberUsingRole = await this.projectMemberRepo.findOne({
+      where: { role: { id: roleId }, project: { id: projectId } },
+      select: { id: true },
+    });
+    if (memberUsingRole) {
+      throw new ConflictException(
+        'Cannot delete a role that is currently assigned to project members',
+      );
+    }
+
+    // Check if role is used by pending invites
+    const inviteUsingRole = await this.inviteRepo.findOne({
+      where: {
+        role: { id: roleId },
+        project: { id: projectId },
+        status: InviteStatus.PENDING,
+      },
+      select: { id: true },
+    });
+    if (inviteUsingRole) {
+      throw new ConflictException(
+        'Cannot delete a role that is currently referenced by pending invites',
+      );
+    }
+
+    await this.projectRoleRepo.delete(roleId);
+  }
+
+  private toRoleResponseView(role: ProjectRoleEntity): ProjectRoleResponseDto {
+    return {
+      id: role.id,
+      name: role.name,
+      description: role.description ?? '',
+      level: role.level,
+      permissions: role.permissions,
+      isSystemRole: role.isSystemRole,
+      createdAt: role.createdAt,
+      updatedAt: role.updatedAt,
+    };
   }
 }
