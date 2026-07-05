@@ -22,6 +22,7 @@ import {
   RequiredPermissionInfo,
 } from '../decorators/require-permission.decorator';
 import { ProjectAuthEvaluator } from '@modules/projects/utils/project-auth.evaluator';
+import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 
 @Injectable()
 export class ProjectAuthGuard implements CanActivate {
@@ -44,6 +45,13 @@ export class ProjectAuthGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    // Skip all project-auth logic for routes explicitly marked @Public()
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (isPublic) return true;
+
     const request = context.switchToHttp().getRequest();
     const { user } = request;
 
@@ -112,6 +120,17 @@ export class ProjectAuthGuard implements CanActivate {
           throw new BadRequestException('Project owner cannot be downgraded here');
         }
 
+        // Admins are peers — no admin may change another admin's role
+        const actorIsAdmin = actor.role.level === 100;
+        const targetIsAdmin = target.role.level === 100;
+        const isSelfUpdate = actor.id === target.id;
+
+        if (actorIsAdmin && targetIsAdmin && !isSelfUpdate) {
+          throw new ForbiddenException(
+            'Admins cannot change the role of another admin',
+          );
+        }
+
         const canModify = ProjectAuthEvaluator.canModifyMember(actor, target);
         if (!canModify) {
           throw new ForbiddenException(
@@ -130,6 +149,22 @@ export class ProjectAuthGuard implements CanActivate {
             throw new ForbiddenException(
               'You cannot assign a role level equal to or higher than your own',
             );
+          }
+
+          // Prevent last-admin self-demotion
+          if (isSelfUpdate && actorIsAdmin && targetRole.level < 100) {
+            const adminCount = await this.projectMemberRepo
+              .createQueryBuilder('pm')
+              .innerJoin('pm.role', 'role')
+              .where('pm.project_id = :projectId', { projectId })
+              .andWhere('role.level = 100')
+              .getCount();
+
+            if (adminCount < 2) {
+              throw new BadRequestException(
+                'You are the only admin of this project. At least 2 admins must exist before you can change your own role.',
+              );
+            }
           }
         }
       } else if (method === 'DELETE') {

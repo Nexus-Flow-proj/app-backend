@@ -559,6 +559,22 @@ export class ProjectsService {
       throw new NotFoundException('Target role not found in this project');
     }
 
+    // Defensive: prevent demoting the last admin out of the admin role
+    if (member.role.level === 100 && targetRole.level < 100) {
+      const adminCount = await this.projectMemberRepo
+        .createQueryBuilder('pm')
+        .innerJoin('pm.role', 'role')
+        .where('pm.project_id = :projectId', { projectId })
+        .andWhere('role.level = 100')
+        .getCount();
+
+      if (adminCount < 2) {
+        throw new BadRequestException(
+          'Cannot demote the last admin of this project. There must be at least 2 admins before an admin\'s role can be changed.',
+        );
+      }
+    }
+
     member.role = targetRole;
 
     const savedMember = await this.projectMemberRepo.save(member);
