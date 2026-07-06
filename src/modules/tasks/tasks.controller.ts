@@ -21,7 +21,7 @@ import { PaginationQueryDto } from '@shared/dto/pagination-query.dto';
 
 import { CreateTaskDto } from './dtos/create-task.dto';
 import { UpdateTaskDto } from './dtos/update-task.dto';
-import { TaskDto, PaginatedTasksDto } from './dtos/task.dto';
+import { TaskDto, PaginatedTasksDto, TaskListDto } from './dtos/task.dto';
 import {
   CreateSubTaskDto,
   SubTaskResponseDto,
@@ -38,15 +38,18 @@ import {
   TimeLogResponseDto,
   PaginatedTimeLogsDto,
 } from './dtos/time-log.dto';
+import { ProjectAuthGuard } from '@shared/guards/project-auth.guard';
+import { RequirePermission } from '@shared/decorators/require-permission.decorator';
 
 @Controller()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, ProjectAuthGuard)
 export class TasksController {
   constructor(private readonly tasksService: TasksService) {}
 
   // ─── Task Endpoints ────────────────────────────────────
 
   @Get('projects/:projectId/tasks')
+  @RequirePermission('tasks', 'read')
   @Serialize(PaginatedTasksDto)
   async listTasks(
     @Param('projectId') projectId: string,
@@ -64,7 +67,8 @@ export class TasksController {
   }
 
   @Get('boards/:columnId/tasks')
-  @Serialize(TaskDto)
+  @RequirePermission('tasks', 'read')
+  @Serialize(TaskListDto)
   async listTasksByColumn(
     @Param('columnId') columnId: string,
     @CurrentUser() user: User,
@@ -75,6 +79,7 @@ export class TasksController {
 
   @Post('projects/:projectId/tasks/:boardColumnId')
   @UseGuards(CsrfGuard)
+  @RequirePermission('tasks', 'create')
   @Serialize(TaskDto)
   async createTask(
     @Param('projectId') projectId: string,
@@ -92,6 +97,7 @@ export class TasksController {
   }
 
   @Get('tasks/:id')
+  @RequirePermission('tasks', 'read')
   @Serialize(TaskDto)
   async getTask(@Param('id') id: string, @CurrentUser() user: User) {
     const data = await this.tasksService.getTask(id, user.id);
@@ -100,6 +106,7 @@ export class TasksController {
 
   @Patch('tasks/:id')
   @UseGuards(CsrfGuard)
+  @RequirePermission('tasks', 'update')
   @Serialize(TaskDto)
   async updateTask(
     @Param('id') id: string,
@@ -112,6 +119,7 @@ export class TasksController {
 
   @Delete('tasks/:id')
   @UseGuards(CsrfGuard)
+  @RequirePermission('tasks', 'delete')
   @HttpCode(HttpStatus.OK)
   async deleteTask(@Param('id') id: string, @CurrentUser() user: User) {
     await this.tasksService.deleteTask(id, user.id);
@@ -122,6 +130,7 @@ export class TasksController {
 
   @Post('tasks/:id/subtasks')
   @UseGuards(CsrfGuard)
+  @RequirePermission('tasks', 'update')
   @Serialize(SubTaskResponseDto)
   async createSubtask(
     @Param('id') taskId: string,
@@ -134,6 +143,7 @@ export class TasksController {
 
   @Patch('tasks/:id/subtasks/:sid')
   @UseGuards(CsrfGuard)
+  @RequirePermission('tasks', 'update')
   @Serialize(SubTaskResponseDto)
   async updateSubtask(
     @Param('id') taskId: string,
@@ -152,6 +162,7 @@ export class TasksController {
 
   @Delete('tasks/:id/subtasks/:sid')
   @UseGuards(CsrfGuard)
+  @RequirePermission('tasks', 'delete')
   @HttpCode(HttpStatus.OK)
   async deleteSubtask(
     @Param('sid') subtaskId: string,
@@ -164,6 +175,7 @@ export class TasksController {
   // ─── Comment Endpoints ─────────────────────────────────
   @Post('tasks/:id/comments')
   @UseGuards(CsrfGuard)
+  @RequirePermission('tasks', 'read')
   @Serialize(CommentResponseDto)
   async createComment(
     @Param('id') taskId: string,
@@ -175,6 +187,7 @@ export class TasksController {
   }
 
   @Get('tasks/:id/comments')
+  @RequirePermission('tasks', 'read')
   @Serialize(PaginatedCommentsDto)
   async listComments(
     @Param('id') taskId: string,
@@ -218,6 +231,7 @@ export class TasksController {
 
   @Post('tasks/:id/time-logs')
   @UseGuards(CsrfGuard)
+  @RequirePermission('tasks', 'read')
   @Serialize(TimeLogResponseDto)
   async createTimeLog(
     @Param('id') taskId: string,
@@ -229,6 +243,7 @@ export class TasksController {
   }
 
   @Get('tasks/:id/time-logs')
+  @RequirePermission('tasks', 'read')
   @Serialize(PaginatedTimeLogsDto)
   async listTimeLogs(
     @Param('id') taskId: string,

@@ -1,7 +1,6 @@
 import {
   Injectable,
   NotFoundException,
-  ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -36,71 +35,22 @@ export class TasksService {
     @InjectRepository(Board) private boardRepo: Repository<Board>,
   ) {}
 
-  private async checkProjectAccess(
+  // ─── Helpers ───────────────────────────────────────────────────────────
+
+  private async assertAssigneeMembership(
     projectId: string,
-    userId: string,
+    assigneeId: string,
   ): Promise<void> {
-    const isMember = await this.projectMemberRepo.findOne({
-      where: { project: { id: projectId }, user: { id: userId } },
+    const isAssigneeMember = await this.projectMemberRepo.findOne({
+      where: { project: { id: projectId }, user: { id: assigneeId } },
       select: { id: true },
     });
-    if (!isMember) {
-      throw new ForbiddenException('You do not have access to this project');
+
+    if (!isAssigneeMember) {
+      throw new BadRequestException(
+        'Assigned user is not a member of this project',
+      );
     }
-  }
-
-  private async assertTaskAccess(
-    taskId: string,
-    userId: string,
-  ): Promise<Task> {
-    const task = await this.taskRepo
-      .createQueryBuilder('task')
-      .leftJoinAndSelect('task.project', 'project')
-      .leftJoinAndMapOne(
-        'task.currentUserMembership',
-        ProjectMember,
-        'member',
-        'member.project.id = project.id AND member.user.id = :userId',
-        { userId },
-      )
-      .where('task.id = :taskId', { taskId })
-      .getOne();
-
-    if (!task) throw new NotFoundException('Task not found');
-    if (!(task as any).currentUserMembership) {
-      throw new ForbiddenException('You do not have access to this project');
-    }
-    return task;
-  }
-
-  private async assertSubtaskAccess(
-    subtaskId: string,
-    userId: string,
-    taskId?: string,
-  ): Promise<SubTask> {
-    const query = this.subtaskRepo
-      .createQueryBuilder('subtask')
-      .leftJoinAndSelect('subtask.task', 'task')
-      .leftJoinAndSelect('task.project', 'project')
-      .leftJoinAndMapOne(
-        'task.currentUserMembership',
-        ProjectMember,
-        'member',
-        'member.project.id = project.id AND member.user.id = :userId',
-        { userId },
-      )
-      .where('subtask.id = :subtaskId', { subtaskId });
-
-    if (taskId) {
-      query.andWhere('task.id = :taskId', { taskId });
-    }
-
-    const subtask = await query.getOne();
-    if (!subtask) throw new NotFoundException('Subtask not found');
-    if (!(subtask.task as any).currentUserMembership) {
-      throw new ForbiddenException('You do not have access to this project');
-    }
-    return subtask;
   }
 
   private async resolveBoardColumn(
@@ -120,87 +70,16 @@ export class TasksService {
     return column;
   }
 
-  private async assertCommentAccess(
-    commentId: string,
-    userId: string,
-    options: { requireOwnership: boolean } = { requireOwnership: true },
-  ): Promise<TaskComment> {
-    const comment = await this.taskCommentRepo
-      .createQueryBuilder('comment')
-      .leftJoinAndSelect('comment.user', 'author')
-      .leftJoinAndSelect('comment.task', 'task')
-      .leftJoinAndSelect('task.project', 'project')
-      .leftJoinAndMapOne(
-        'task.currentUserMembership',
-        ProjectMember,
-        'member',
-        'member.project.id = project.id AND member.user.id = :userId',
-        { userId },
-      )
-      .where('comment.id = :commentId', { commentId })
-      .getOne();
-
-    if (!comment) {
-      throw new NotFoundException('Comment not found');
-    }
-
-    const isMember = !!(comment.task as any).currentUserMembership;
-    if (!isMember) {
-      throw new ForbiddenException('You do not have access to this project');
-    }
-
-    if (options.requireOwnership && comment.user.id !== userId) {
-      throw new ForbiddenException('You can only modify your own comments');
-    }
-
-    return comment;
-  }
-
-  private async assertTimeLogAccess(
-    timeLogId: string,
-    userId: string,
-    options: { requireOwnership?: boolean } = {},
-  ): Promise<TimeLog> {
-    const timeLog = await this.timeLogRepo
-      .createQueryBuilder('timeLog')
-      .leftJoinAndSelect('timeLog.user', 'author')
-      .leftJoinAndSelect('timeLog.task', 'task')
-      .leftJoinAndSelect('task.project', 'project')
-      .leftJoinAndMapOne(
-        'task.currentUserMembership',
-        ProjectMember,
-        'member',
-        'member.project.id = project.id AND member.user.id = :userId',
-        { userId },
-      )
-      .where('timeLog.id = :timeLogId', { timeLogId })
-      .getOne();
-
-    if (!timeLog) throw new NotFoundException('Time log not found');
-    if (!(timeLog.task as any).currentUserMembership) {
-      throw new ForbiddenException('You do not have access to this project');
-    }
-    if (options.requireOwnership && timeLog.user.id !== userId) {
-      throw new ForbiddenException('You can only modify your own time logs');
-    }
-    return timeLog;
-  }
-
   // ─── Tasks ─────────────────────────────────────────────────────────────
 
-  async listTasks(projectId: string, userId: string, page = 1, limit = 50) {
-    await this.checkProjectAccess(projectId, userId);
-
+  async listTasks(
+    projectId: string,
+    userId: string,
+    page = 1,
+    limit = 50,
+  ) {
     const [tasks, total] = await this.taskRepo.findAndCount({
       where: { project: { id: projectId } },
-      select: {
-        id: true,
-        title: true,
-        columnOrder: true,
-        project: {
-          id: true,
-        },
-      },
       relations: {
         project: true,
         createdBy: true,
@@ -211,8 +90,8 @@ export class TasksService {
       },
       order: {
         columnOrder: 'ASC',
-        subtasks: { sortOrder: 'ASC' },
-        comments: { created_at: 'ASC' },
+        subtasks: { sortOrder: 'ASC', createdAt: 'ASC' },
+        comments: { createdAt: 'ASC' },
       },
       take: limit,
       skip: (page - 1) * limit,
@@ -222,23 +101,12 @@ export class TasksService {
   }
 
   async listTasksByColumn(columnId: string, userId: string) {
-    const column = await this.boardRepo
-      .createQueryBuilder('column')
-      .leftJoinAndSelect('column.project', 'project')
-      .leftJoinAndMapOne(
-        'column.currentUserMembership',
-        ProjectMember,
-        'member',
-        'member.project.id = project.id AND member.user.id = :userId',
-        { userId },
-      )
-      .where('column.id = :columnId', { columnId })
-      .getOne();
+    const column = await this.boardRepo.findOne({
+      where: { id: columnId },
+      relations: { project: true },
+    });
 
     if (!column) throw new NotFoundException('Board column not found');
-    if (!(column as any).currentUserMembership) {
-      throw new ForbiddenException('You do not have access to this project');
-    }
 
     return this.taskRepo.find({
       where: { boardColumn: { id: columnId } },
@@ -252,8 +120,8 @@ export class TasksService {
       },
       order: {
         columnOrder: 'ASC',
-        subtasks: { sortOrder: 'ASC' },
-        comments: { created_at: 'ASC' },
+        subtasks: { sortOrder: 'ASC', createdAt: 'ASC' },
+        comments: { createdAt: 'ASC' },
       },
     });
   }
@@ -264,13 +132,23 @@ export class TasksService {
     dto: CreateTaskDto,
     userId: string,
   ) {
-    await this.checkProjectAccess(projectId, userId);
+    const { assigneeId, assignee: assigneeInput, ...scalarFields } = dto;
+    const resolvedAssigneeId =
+      assigneeInput !== undefined ? assigneeInput : assigneeId;
 
-    const { assigneeId, ...scalarFields } = dto;
-
-    const [assignee, boardColumn] = await Promise.all([
-      assigneeId
-        ? this.userRepo.findOne({ where: { id: assigneeId } })
+    const [currentUser, assignee, boardColumn] = await Promise.all([
+      this.userRepo.findOne({
+        where: { id: userId },
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          avatarUrl: true,
+        },
+      }),
+      resolvedAssigneeId
+        ? this.userRepo.findOne({ where: { id: resolvedAssigneeId } })
         : Promise.resolve(null),
       this.boardRepo.findOne({
         where: { id: boardColumnId },
@@ -278,9 +156,15 @@ export class TasksService {
       }),
     ]);
 
-    if (assigneeId && !assignee)
+    if (resolvedAssigneeId && !assignee) {
       throw new NotFoundException('Assignee not found');
-    if (!boardColumn) throw new NotFoundException('Board column not found');
+    }
+    if (resolvedAssigneeId) {
+      await this.assertAssigneeMembership(projectId, resolvedAssigneeId);
+    }
+    if (!boardColumn) {
+      throw new NotFoundException('Board column not found');
+    }
     if (boardColumn.project.id !== projectId) {
       throw new BadRequestException(
         'The board column does not belong to this project',
@@ -292,9 +176,12 @@ export class TasksService {
       deadline: dto.deadline ? new Date(dto.deadline) : null,
       columnOrder: dto.columnOrder ?? 0,
       project: { id: projectId } as Project,
-      createdBy: { id: userId } as User,
+      createdBy: currentUser!,
       assignee,
       boardColumn,
+      subtasks: [],
+      comments: [],
+      timeLogs: [],
     });
 
     return this.taskRepo.save(task);
@@ -317,13 +204,12 @@ export class TasksService {
         },
       },
       order: {
-        subtasks: { sortOrder: 'ASC' },
-        comments: { created_at: 'ASC' },
+        subtasks: { sortOrder: 'ASC', createdAt: 'ASC' },
+        comments: { createdAt: 'ASC' },
       },
     });
 
     if (!task) throw new NotFoundException('Task not found');
-    await this.checkProjectAccess(task.project.id, userId);
 
     return task;
   }
@@ -340,24 +226,34 @@ export class TasksService {
         comments: { user: true },
       },
       order: {
-        subtasks: { sortOrder: 'ASC' },
-        comments: { created_at: 'ASC' },
+        subtasks: { sortOrder: 'ASC', createdAt: 'ASC' },
+        comments: { createdAt: 'ASC' },
       },
     });
 
     if (!task) throw new NotFoundException('Task not found');
-    await this.checkProjectAccess(task.project.id, userId);
 
-    const { assigneeId, boardColumnId, ...scalarFields } = dto;
+    const {
+      assigneeId,
+      assignee: assigneeInput,
+      boardColumnId,
+      ...scalarFields
+    } = dto;
+    const resolvedAssigneeId =
+      assigneeInput !== undefined ? assigneeInput : assigneeId;
 
-    if (assigneeId !== undefined) {
-      if (assigneeId === null) {
+    if (resolvedAssigneeId !== undefined) {
+      if (resolvedAssigneeId === null) {
         task.assignee = null;
       } else {
         const assignee = await this.userRepo.findOne({
-          where: { id: assigneeId },
+          where: { id: resolvedAssigneeId },
         });
         if (!assignee) throw new NotFoundException('Assignee not found');
+        await this.assertAssigneeMembership(
+          task.project.id,
+          resolvedAssigneeId,
+        );
         task.assignee = assignee;
       }
     }
@@ -382,19 +278,24 @@ export class TasksService {
   }
 
   async deleteTask(taskId: string, userId: string) {
-    await this.assertTaskAccess(taskId, userId);
+    const task = await this.taskRepo.findOne({ where: { id: taskId } });
+    if (!task) throw new NotFoundException('Task not found');
     await this.taskRepo.delete({ id: taskId });
   }
 
   // ─── Subtasks ──────────────────────────────────────────────────────────
 
   async createSubtask(taskId: string, dto: CreateSubTaskDto, userId: string) {
-    const task = await this.assertTaskAccess(taskId, userId);
+    const task = await this.taskRepo.findOne({
+      where: { id: taskId },
+      relations: { project: true },
+    });
+    if (!task) throw new NotFoundException('Task not found');
 
     const maxQuery = await this.subtaskRepo
       .createQueryBuilder('subtask')
       .select('MAX(subtask.sortOrder)', 'max')
-      .where('subtask.task_id = :taskId', { taskId: task.id })
+      .where('subtask.task = :taskId', { taskId: task.id })
       .getRawOne();
 
     const nextSortOrder = maxQuery?.max != null ? Number(maxQuery.max) + 1 : 1;
@@ -415,8 +316,6 @@ export class TasksService {
     dto: UpdateSubTaskDto,
     userId: string,
   ) {
-    await this.assertTaskAccess(taskId, userId);
-
     const subtask = await this.subtaskRepo.findOne({
       where: { id: subtaskId, task: { id: taskId } },
     });
@@ -438,15 +337,17 @@ export class TasksService {
       throw new NotFoundException('Subtask not found');
     }
 
-    await this.assertTaskAccess(subtask.task.id, userId);
-
-    await this.subtaskRepo.delete(subtask);
+    await this.subtaskRepo.delete({ id: subtaskId });
   }
 
   // ─── Comments ──────────────────────────────────────────────────────────
 
   async createComment(taskId: string, dto: CreateCommentDto, userId: string) {
-    const task = await this.assertTaskAccess(taskId, userId);
+    const task = await this.taskRepo.findOne({
+      where: { id: taskId },
+      relations: { project: true },
+    });
+    if (!task) throw new NotFoundException('Task not found');
 
     const comment = this.taskCommentRepo.create({
       body: dto.body,
@@ -458,14 +359,12 @@ export class TasksService {
   }
 
   async listComments(taskId: string, userId: string, page = 1, limit = 50) {
-    await this.assertTaskAccess(taskId, userId);
-
     const [comments, total] = await this.taskCommentRepo.findAndCount({
       where: { task: { id: taskId } },
       relations: {
         user: true,
       },
-      order: { created_at: 'ASC' },
+      order: { createdAt: 'ASC' },
       take: limit,
       skip: (page - 1) * limit,
     });
@@ -478,9 +377,12 @@ export class TasksService {
     dto: UpdateCommentDto,
     userId: string,
   ) {
-    const comment = await this.assertCommentAccess(commentId, userId, {
-      requireOwnership: true,
+    const comment = await this.taskCommentRepo.findOne({
+      where: { id: commentId },
+      relations: { user: true },
     });
+
+    if (!comment) throw new NotFoundException('Comment not found');
 
     comment.body = dto.body;
 
@@ -488,9 +390,10 @@ export class TasksService {
   }
 
   async deleteComment(commentId: string, userId: string) {
-    await this.assertCommentAccess(commentId, userId, {
-      requireOwnership: true,
+    const comment = await this.taskCommentRepo.findOne({
+      where: { id: commentId },
     });
+    if (!comment) throw new NotFoundException('Comment not found');
 
     await this.taskCommentRepo.delete({ id: commentId });
   }
@@ -498,7 +401,11 @@ export class TasksService {
   // ─── Time Logs ─────────────────────────────────────────────────────────
 
   async createTimeLog(taskId: string, dto: CreateTimeLogDto, userId: string) {
-    const task = await this.assertTaskAccess(taskId, userId);
+    const task = await this.taskRepo.findOne({
+      where: { id: taskId },
+      relations: { project: true },
+    });
+    if (!task) throw new NotFoundException('Task not found');
 
     const timeLog = this.timeLogRepo.create({
       durationMin: dto.durationMin,
@@ -512,8 +419,6 @@ export class TasksService {
   }
 
   async listTimeLogs(taskId: string, userId: string, page = 1, limit = 50) {
-    await this.assertTaskAccess(taskId, userId);
-
     const [timeLogs, total] = await this.timeLogRepo.findAndCount({
       where: { task: { id: taskId } },
       relations: {
@@ -530,15 +435,8 @@ export class TasksService {
   async deleteTimeLog(timeLogId: string, userId: string) {
     const timeLog = await this.timeLogRepo.findOne({
       where: { id: timeLogId },
-      select: { id: true, user: { id: true } },
-      relations: { user: true },
     });
-
     if (!timeLog) throw new NotFoundException('Time log not found');
-
-    if (timeLog.user.id !== userId) {
-      throw new ForbiddenException('You can only delete your own time logs');
-    }
 
     await this.timeLogRepo.delete({ id: timeLogId });
   }

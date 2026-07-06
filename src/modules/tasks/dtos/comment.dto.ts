@@ -1,4 +1,4 @@
-import { Expose, Type } from 'class-transformer';
+import { Expose, Transform, Type } from 'class-transformer';
 import { IsNotEmpty, IsString } from 'class-validator';
 import { TaskUserDto } from './task.dto';
 
@@ -20,6 +20,7 @@ export class CommentResponseDto {
   user!: TaskUserDto;
 
   @Expose()
+  @Transform(({ obj }) => obj.createdAt)
   created_at!: Date;
 }
 

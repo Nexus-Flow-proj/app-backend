@@ -29,9 +29,14 @@ import {
   GetInvitesQueryDto,
   PaginatedInvitesDto,
 } from './dtos/get-invites.dto';
+import { ProjectAuthGuard } from '../../shared/guards/project-auth.guard';
+import { RequirePermission } from '../../shared/decorators/require-permission.decorator';
+import { CurrentProjectMember } from '../../shared/decorators/current-project-member.decorator';
+import { ProjectMember } from './entities/project-member.entity';
+import { CreateProjectRoleDto, UpdateProjectRoleDto, ProjectRoleResponseDto } from './dtos/role.dto';
 
 @Controller('projects')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, ProjectAuthGuard)
 export class ProjectsController {
   constructor(private projectsService: ProjectsService) {}
 
@@ -56,60 +61,56 @@ export class ProjectsController {
 
   @Get(':projectId')
   @UseGuards(CsrfGuard)
+  @RequirePermission('project', 'read')
   @Serialize(ProjectDto)
   async getProject(
     @Param('projectId') projectId: string,
-    @CurrentUser() user: User,
   ): Promise<any> {
-    const data = await this.projectsService.getProject(projectId, user.id);
+    const data = await this.projectsService.getProject(projectId);
     return { message: 'Project retrieved successfully.', data };
   }
 
   @Patch(':projectId')
   @UseGuards(CsrfGuard)
+  @RequirePermission('project', 'updateSettings')
   @Serialize(ProjectDto)
   async updateProject(
     @Param('projectId') projectId: string,
     @Body() body: UpdateProjectDto,
-    @CurrentUser() user: User,
   ): Promise<any> {
-    const data = await this.projectsService.updateProject(
-      projectId,
-      body,
-      user.id,
-    );
+    const data = await this.projectsService.updateProject(projectId, body);
     return { message: 'Project updated successfully.', data };
   }
 
   @Post(':projectId/invites')
   @UseGuards(CsrfGuard)
+  @RequirePermission('members', 'invite')
   @Serialize(InviteLinkResponseDto)
   async inviteMember(
     @Param('projectId') projectId: string,
     @Body() body: InviteMemberDto,
-    @CurrentUser() user: User,
+    @CurrentProjectMember() actor: ProjectMember,
   ): Promise<any> {
     const data = await this.projectsService.inviteMember(
       projectId,
       body,
-      user.id,
+      actor,
     );
     return { message: 'Invite sent successfully.', data };
   }
 
   @Get(':projectId/invites')
   @UseGuards(CsrfGuard)
+  @RequirePermission('members', 'invite')
   @Serialize(PaginatedInvitesDto)
   async getProjectInvites(
     @Param('projectId') projectId: string,
     @Query() query: GetInvitesQueryDto,
-    @CurrentUser() user: User,
   ) {
     const { page = 1, limit = 50, status } = query;
 
     const data = await this.projectsService.getProjectInvites(
       projectId,
-      user.id,
       page,
       limit,
       status,
@@ -148,43 +149,113 @@ export class ProjectsController {
     return { message: 'Invite declined successfully.' };
   }
 
+  @Post(':projectId/invites/:inviteId/cancel')
+  @UseGuards(CsrfGuard)
+  @RequirePermission('members', 'invite')
+  async cancelInvite(
+    @Param('projectId') projectId: string,
+    @Param('inviteId') inviteId: string,
+  ): Promise<{ message: string }> {
+    await this.projectsService.cancelInvite(projectId, inviteId);
+    return { message: 'Invite cancelled successfully.' };
+  }
+
+  @Delete(':projectId/invites/:inviteId')
+  @UseGuards(CsrfGuard)
+  @RequirePermission('members', 'remove')
+  async revokeInvite(
+    @Param('projectId') projectId: string,
+    @Param('inviteId') inviteId: string,
+  ): Promise<{ message: string }> {
+    await this.projectsService.revokeInvite(projectId, inviteId);
+    return { message: 'Invite revoked successfully.' };
+  }
+
   @Get(':projectId/members')
   @UseGuards(CsrfGuard)
+  @RequirePermission('project', 'read')
   @Serialize(ProjectMemberDto)
   async listMembers(
     @Param('projectId') projectId: string,
-    @CurrentUser() user: User,
   ): Promise<any> {
-    const data = await this.projectsService.listMembers(projectId, user.id);
+    const data = await this.projectsService.listMembers(projectId);
     return { message: 'Project members retrieved successfully.', data };
   }
 
   @Patch(':projectId/members/:memberId')
   @UseGuards(CsrfGuard)
+  @RequirePermission('members', 'changeRoles')
   @Serialize(ProjectMemberDto)
   async updateMemberRole(
     @Param('projectId') projectId: string,
     @Param('memberId') memberId: string,
     @Body() body: UpdateProjectMemberDto,
-    @CurrentUser() user: User,
   ): Promise<any> {
     const data = await this.projectsService.updateMemberRole(
       projectId,
       memberId,
       body,
-      user.id,
     );
     return { message: 'Member role updated successfully.', data };
   }
 
   @Delete(':projectId/members/:memberId')
   @UseGuards(CsrfGuard)
+  @RequirePermission('members', 'remove')
   async removeMember(
     @Param('projectId') projectId: string,
     @Param('memberId') memberId: string,
-    @CurrentUser() user: User,
   ): Promise<any> {
-    await this.projectsService.removeMember(projectId, memberId, user.id);
+    await this.projectsService.removeMember(projectId, memberId);
     return { message: 'Member removed successfully.' };
+  }
+
+  // ─── Project Roles CRUD ────────────────────────────────────────────────
+
+  @Get(':projectId/roles')
+  @RequirePermission('project', 'read')
+  @Serialize(ProjectRoleResponseDto)
+  async listRoles(@Param('projectId') projectId: string) {
+    const data = await this.projectsService.listRoles(projectId);
+    return { message: 'Project roles retrieved successfully.', data };
+  }
+
+  @Post(':projectId/roles')
+  @UseGuards(CsrfGuard)
+  @RequirePermission('project', 'updateSettings')
+  @Serialize(ProjectRoleResponseDto)
+  async createRole(
+    @Param('projectId') projectId: string,
+    @Body() body: CreateProjectRoleDto,
+    @CurrentProjectMember() actor: ProjectMember,
+  ) {
+    const data = await this.projectsService.createRole(projectId, body, actor);
+    return { message: 'Project role created successfully.', data };
+  }
+
+  @Patch(':projectId/roles/:roleId')
+  @UseGuards(CsrfGuard)
+  @RequirePermission('project', 'updateSettings')
+  @Serialize(ProjectRoleResponseDto)
+  async updateRole(
+    @Param('projectId') projectId: string,
+    @Param('roleId') roleId: string,
+    @Body() body: UpdateProjectRoleDto,
+    @CurrentProjectMember() actor: ProjectMember,
+  ) {
+    const data = await this.projectsService.updateRole(projectId, roleId, body, actor);
+    return { message: 'Project role updated successfully.', data };
+  }
+
+  @Delete(':projectId/roles/:roleId')
+  @UseGuards(CsrfGuard)
+  @RequirePermission('project', 'updateSettings')
+  async deleteRole(
+    @Param('projectId') projectId: string,
+    @Param('roleId') roleId: string,
+    @CurrentProjectMember() actor: ProjectMember,
+  ) {
+    await this.projectsService.deleteRole(projectId, roleId, actor);
+    return { message: 'Project role deleted successfully.' };
   }
 }

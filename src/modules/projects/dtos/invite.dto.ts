@@ -16,7 +16,10 @@ export class InviteDto {
   projectName!: string;
 
   @Expose()
-  roleLabel!: ProjectRole;
+  roleId!: string;
+
+  @Expose()
+  roleName!: string;
 
   @Expose()
   status!: InviteStatus;
