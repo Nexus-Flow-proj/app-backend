@@ -529,6 +529,29 @@ export class ProjectsService {
     await this.inviteRepo.save(invite);
   }
 
+  async getProjectMember(
+    projectId: string,
+    userId: string,
+  ): Promise<ProjectMember> {
+    const member = await this.projectMemberRepo.findOne({
+      where: {
+        project: { id: projectId },
+        user: { id: userId },
+      },
+      relations: {
+        project: true,
+        user: true,
+        role: true,
+      },
+    });
+
+    if (!member) {
+      throw new ForbiddenException('You are not a member of this project');
+    }
+
+    return member;
+  }
+
   async listMembers(projectId: string): Promise<ProjectMemberDto[]> {
     const members = await this.projectMemberRepo.find({
       where: { project: { id: projectId } },
@@ -570,7 +593,7 @@ export class ProjectsService {
 
       if (adminCount < 2) {
         throw new BadRequestException(
-          'Cannot demote the last admin of this project. There must be at least 2 admins before an admin\'s role can be changed.',
+          "Cannot demote the last admin of this project. There must be at least 2 admins before an admin's role can be changed.",
         );
       }
     }
