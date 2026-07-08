@@ -15,6 +15,8 @@ import { ProjectsModule } from './modules/projects/projects.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { BoardsModule } from './modules/boards/boards.module';
 import { CanvasModule } from '@modules/canvas/canvas.module';
+import { ActivitiesModule } from './modules/activities/activities.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -44,7 +46,9 @@ import { CanvasModule } from '@modules/canvas/canvas.module';
     ProjectsModule,
     TasksModule,
     BoardsModule,
-    CanvasModule
+    CanvasModule,
+    ActivitiesModule,
+    DashboardModule
   ],
   providers: [
     ConfigurableThrottlerGuard,

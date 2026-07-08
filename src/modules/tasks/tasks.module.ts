@@ -11,6 +11,7 @@ import { ProjectMember } from '@modules/projects/entities/project-member.entity'
 import { User } from '@modules/users/entities/user.entity';
 import { Board } from '@modules/boards/entities/board.entity';
 import { ProjectRole } from '@modules/projects/entities/project-role.entity';
+import { ActivitiesModule } from '@modules/activities/activities.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { ProjectRole } from '@modules/projects/entities/project-role.entity';
       Board,
       ProjectRole,
     ]),
+    ActivitiesModule,
   ],
   controllers: [TasksController],
   providers: [TasksService],

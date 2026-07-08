@@ -35,6 +35,7 @@ import {
   ProjectRoleResponseDto,
 } from './dtos/role.dto';
 import { ProjectAuthEvaluator } from './utils/project-auth.evaluator';
+import { ActivitiesService } from '@modules/activities/activities.service';
 
 export const DEFAULT_ROLE_PRESETS = [
   {
@@ -176,6 +177,7 @@ export class ProjectsService {
     private projectRoleRepo: Repository<ProjectRoleEntity>,
     private mailService: MailService,
     private configService: ConfigService,
+    private activitiesService: ActivitiesService,
   ) {}
 
   async create(body: CreateProjectDto, userId: string): Promise<ProjectDto> {
@@ -184,7 +186,7 @@ export class ProjectsService {
       throw new UnauthorizedException('User not found');
     }
 
-    return this.projectRepo.manager.transaction(async (manager) => {
+    const projectDto = await this.projectRepo.manager.transaction(async (manager) => {
       const project = manager.create(Project, {
         name: body.name,
         description: body.description ?? null,
@@ -222,8 +224,23 @@ export class ProjectsService {
         relations: { project: true, user: true, role: true },
       });
 
-      return this.toProjectView(savedProject, 1, owner.id, createdMember ?? undefined);
+      return {
+        dto: this.toProjectView(savedProject, 1, owner.id, createdMember ?? undefined),
+        projectId: savedProject.id,
+        projectName: savedProject.name,
+      };
     });
+
+    // Log activity OUTSIDE the transaction to avoid cross-connection deadlocks
+    await this.activitiesService.logActivity(
+      userId,
+      projectDto.projectId,
+      `created project: ${projectDto.projectName}`,
+      'project',
+      projectDto.projectId,
+    );
+
+    return projectDto.dto;
   }
 
   async getMyProjects(userId: string): Promise<ProjectDto[]> {
@@ -284,6 +301,15 @@ export class ProjectsService {
     if (body.color !== undefined) project.color = body.color;
 
     const savedProject = await this.projectRepo.save(project);
+    if (userId) {
+      await this.activitiesService.logActivity(
+        userId,
+        savedProject.id,
+        `updated project settings: ${savedProject.name}`,
+        'project',
+        savedProject.id,
+      );
+    }
 
     const currentMember = userId
       ? savedProject.members?.find((m) => m.user?.id === userId) ??
@@ -492,6 +518,14 @@ export class ProjectsService {
         'Project member not found after invite acceptance',
       );
     }
+
+    await this.activitiesService.logActivity(
+      userId,
+      invite.project.id,
+      `joined project: ${invite.project.name}`,
+      'project',
+      invite.project.id,
+    );
 
     return this.toMemberView(hydratedMember);
   }
@@ -761,6 +795,9 @@ export class ProjectsService {
     adminId: string | null,
     currentMember?: ProjectMember,
   ): ProjectDto {
+    if (currentMember) {
+      currentMember.project = project;
+    }
     return {
       id: project.id,
       name: project.name,

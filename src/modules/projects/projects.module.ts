@@ -13,6 +13,7 @@ import { Board } from '../boards/entities/board.entity';
 import { SubTask } from '../tasks/entities/subtask.entity';
 import { TaskComment } from '../tasks/entities/task-comment.entity';
 import { TimeLog } from '../tasks/entities/time-log.entity';
+import { ActivitiesModule } from '@modules/activities/activities.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { TimeLog } from '../tasks/entities/time-log.entity';
       TimeLog,
     ]),
     MailModule,
+    ActivitiesModule,
   ],
   providers: [ProjectsService],
   controllers: [ProjectsController],
