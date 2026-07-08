@@ -1,5 +1,6 @@
-import { Expose } from 'class-transformer';
+import { Expose, Type } from 'class-transformer';
 import { ProjectStatus } from '../enums/project-status.enum';
+import { ProjectMemberDto } from './project-member.dto';
 
 export class ProjectDto {
   @Expose()
@@ -25,6 +26,10 @@ export class ProjectDto {
 
   @Expose()
   color: string;
+
+  @Expose()
+  @Type(() => ProjectMemberDto)
+  currentMember?: ProjectMemberDto;
 
   @Expose()
   created_at!: Date;

@@ -1,5 +1,29 @@
-import { Expose } from 'class-transformer';
+import { Expose, Type } from 'class-transformer';
 import { ProjectRole } from '../enums/project-role.enum';
+import { RolePermissions } from '../entities/project-role.entity';
+
+export class MemberRoleDto {
+  @Expose()
+  id!: string;
+
+  @Expose()
+  projectId!: string;
+
+  @Expose()
+  name!: string;
+
+  @Expose()
+  description!: string | null;
+
+  @Expose()
+  level!: number;
+
+  @Expose()
+  permissions!: RolePermissions;
+
+  @Expose()
+  isSystemRole!: boolean;
+}
 
 export class ProjectMemberDto {
   @Expose()
@@ -26,11 +50,21 @@ export class ProjectMemberDto {
   @Expose()
   avatarUrl!: string | null;
 
+  /** Primary: the UUID of the member's role */
   @Expose()
-  roleLabel!: ProjectRole;
+  roleId!: string;
+
+  /** Primary: full role object */
+  @Expose()
+  @Type(() => MemberRoleDto)
+  role!: MemberRoleDto;
+
+  /** Legacy / optional — kept for backward-compat */
+  @Expose()
+  roleLabel?: ProjectRole;
 
   @Expose()
-  isAdmin!: boolean;
+  isAdmin?: boolean;
 
   @Expose()
   joinedAt!: Date;
