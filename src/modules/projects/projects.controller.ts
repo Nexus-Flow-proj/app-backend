@@ -20,11 +20,13 @@ import { User } from '../users/entities/user.entity';
 import { UpdateProjectDto } from './dtos/update-project.dto';
 import { InviteMemberDto } from './dtos/invite-member.dto';
 import { ProjectMemberDto } from './dtos/project-member.dto';
-import { UpdateProjectMemberDto } from './dtos/update-project-member.dto';
+import {
+  UpdateProjectMemberDto,
+  BulkUpdateMemberRolesDto,
+} from './dtos/update-project-member.dto';
 import { InviteDto } from './dtos/invite.dto';
 import { InviteLinkResponseDto } from './dtos/invite-link-response.dto';
 import { Public } from '@shared/decorators/public.decorator';
-import { PaginationQueryDto } from '@shared/dto/pagination-query.dto';
 import {
   GetInvitesQueryDto,
   PaginatedInvitesDto,
@@ -33,7 +35,11 @@ import { ProjectAuthGuard } from '../../shared/guards/project-auth.guard';
 import { RequirePermission } from '../../shared/decorators/require-permission.decorator';
 import { CurrentProjectMember } from '../../shared/decorators/current-project-member.decorator';
 import { ProjectMember } from './entities/project-member.entity';
-import { CreateProjectRoleDto, UpdateProjectRoleDto, ProjectRoleResponseDto } from './dtos/role.dto';
+import {
+  CreateProjectRoleDto,
+  UpdateProjectRoleDto,
+  ProjectRoleResponseDto,
+} from './dtos/role.dto';
 
 @Controller('projects')
 @UseGuards(JwtAuthGuard, ProjectAuthGuard)
@@ -65,8 +71,9 @@ export class ProjectsController {
   @Serialize(ProjectDto)
   async getProject(
     @Param('projectId') projectId: string,
+    @CurrentUser() user: User,
   ): Promise<any> {
-    const data = await this.projectsService.getProject(projectId);
+    const data = await this.projectsService.getProject(projectId, user.id);
     return { message: 'Project retrieved successfully.', data };
   }
 
@@ -77,8 +84,9 @@ export class ProjectsController {
   async updateProject(
     @Param('projectId') projectId: string,
     @Body() body: UpdateProjectDto,
+    @CurrentUser() user: User,
   ): Promise<any> {
-    const data = await this.projectsService.updateProject(projectId, body);
+    const data = await this.projectsService.updateProject(projectId, body, user.id);
     return { message: 'Project updated successfully.', data };
   }
 
@@ -175,11 +183,26 @@ export class ProjectsController {
   @UseGuards(CsrfGuard)
   @RequirePermission('project', 'read')
   @Serialize(ProjectMemberDto)
-  async listMembers(
-    @Param('projectId') projectId: string,
-  ): Promise<any> {
+  async listMembers(@Param('projectId') projectId: string): Promise<any> {
     const data = await this.projectsService.listMembers(projectId);
     return { message: 'Project members retrieved successfully.', data };
+  }
+
+  @Patch(':projectId/members/roles')
+  @UseGuards(CsrfGuard)
+  @RequirePermission('members', 'changeRoles')
+  @Serialize(ProjectMemberDto)
+  async bulkUpdateMemberRoles(
+    @Param('projectId') projectId: string,
+    @Body() body: BulkUpdateMemberRolesDto,
+    @CurrentProjectMember() actor: ProjectMember,
+  ): Promise<any> {
+    const data = await this.projectsService.bulkUpdateMemberRoles(
+      projectId,
+      body,
+      actor,
+    );
+    return { message: 'Member roles updated successfully.', data };
   }
 
   @Patch(':projectId/members/:memberId')
@@ -243,7 +266,12 @@ export class ProjectsController {
     @Body() body: UpdateProjectRoleDto,
     @CurrentProjectMember() actor: ProjectMember,
   ) {
-    const data = await this.projectsService.updateRole(projectId, roleId, body, actor);
+    const data = await this.projectsService.updateRole(
+      projectId,
+      roleId,
+      body,
+      actor,
+    );
     return { message: 'Project role updated successfully.', data };
   }
 

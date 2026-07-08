@@ -10,6 +10,8 @@ import { Task } from './entities/task.entity';
 import { SubTask } from './entities/subtask.entity';
 import { TaskComment } from './entities/task-comment.entity';
 import { TimeLog } from './entities/time-log.entity';
+import { ActivitiesService } from '@modules/activities/activities.service';
+import { TaskStatus } from './enums/task-status.enum';
 import { Project } from '@modules/projects/entities/project.entity';
 import { ProjectMember } from '@modules/projects/entities/project-member.entity';
 import { User } from '@modules/users/entities/user.entity';
@@ -33,6 +35,7 @@ export class TasksService {
     @InjectRepository(TaskComment)
     private taskCommentRepo: Repository<TaskComment>,
     @InjectRepository(Board) private boardRepo: Repository<Board>,
+    private activitiesService: ActivitiesService,
   ) {}
 
   // ─── Helpers ───────────────────────────────────────────────────────────
@@ -72,12 +75,7 @@ export class TasksService {
 
   // ─── Tasks ─────────────────────────────────────────────────────────────
 
-  async listTasks(
-    projectId: string,
-    userId: string,
-    page = 1,
-    limit = 50,
-  ) {
+  async listTasks(projectId: string, userId: string, page = 1, limit = 50) {
     const [tasks, total] = await this.taskRepo.findAndCount({
       where: { project: { id: projectId } },
       relations: {
@@ -184,7 +182,15 @@ export class TasksService {
       timeLogs: [],
     });
 
-    return this.taskRepo.save(task);
+    const savedTask = await this.taskRepo.save(task);
+    await this.activitiesService.logActivity(
+      userId,
+      projectId,
+      `created task: ${savedTask.title}`,
+      'task',
+      savedTask.id,
+    );
+    return savedTask;
   }
 
   async getTask(taskId: string, userId: string) {
@@ -272,15 +278,40 @@ export class TasksService {
       delete scalarFields.deadline;
     }
 
+    const oldStatus = task.status;
     Object.assign(task, scalarFields);
 
-    return this.taskRepo.save(task);
+    const savedTask = await this.taskRepo.save(task);
+    let message = `updated task: ${savedTask.title}`;
+    if (dto.status && dto.status !== oldStatus) {
+      const action =
+        dto.status === TaskStatus.DONE ? 'completed' : 'updated status of';
+      message = `${action} task: ${savedTask.title}`;
+    }
+    await this.activitiesService.logActivity(
+      userId,
+      savedTask.project.id,
+      message,
+      'task',
+      savedTask.id,
+    );
+    return savedTask;
   }
 
   async deleteTask(taskId: string, userId: string) {
-    const task = await this.taskRepo.findOne({ where: { id: taskId } });
+    const task = await this.taskRepo.findOne({
+      where: { id: taskId },
+      relations: { project: true },
+    });
     if (!task) throw new NotFoundException('Task not found');
     await this.taskRepo.delete({ id: taskId });
+    await this.activitiesService.logActivity(
+      userId,
+      task.project.id,
+      `deleted task: ${task.title}`,
+      'task',
+      taskId,
+    );
   }
 
   // ─── Subtasks ──────────────────────────────────────────────────────────
@@ -355,7 +386,15 @@ export class TasksService {
       user: { id: userId } as User,
     });
 
-    return this.taskCommentRepo.save(comment);
+    const savedComment = await this.taskCommentRepo.save(comment);
+    await this.activitiesService.logActivity(
+      userId,
+      task.project.id,
+      `added a comment on: ${task.title}`,
+      'comment',
+      savedComment.id,
+    );
+    return savedComment;
   }
 
   async listComments(taskId: string, userId: string, page = 1, limit = 50) {

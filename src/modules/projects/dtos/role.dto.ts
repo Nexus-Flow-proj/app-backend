@@ -46,6 +46,9 @@ export class ProjectRoleResponseDto {
   id!: string;
 
   @Expose()
+  projectId?: string;
+
+  @Expose()
   name!: string;
 
   @Expose()

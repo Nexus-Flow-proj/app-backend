@@ -7,16 +7,15 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource } from 'typeorm';
 import { ProjectMember } from '@modules/projects/entities/project-member.entity';
 import { ProjectRole } from '@modules/projects/entities/project-role.entity';
+import { ActivityLog } from '@modules/activities/entities/activity-log.entity';
 import { Task } from '@modules/tasks/entities/task.entity';
 import { Board } from '@modules/boards/entities/board.entity';
 import { SubTask } from '@modules/tasks/entities/subtask.entity';
 import { TaskComment } from '@modules/tasks/entities/task-comment.entity';
 import { TimeLog } from '@modules/tasks/entities/time-log.entity';
-import { Project } from '@modules/projects/entities/project.entity';
 import {
   REQUIRE_PERMISSION_KEY,
   RequiredPermissionInfo,
@@ -28,24 +27,38 @@ import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 export class ProjectAuthGuard implements CanActivate {
   constructor(
     private reflector: Reflector,
-    @InjectRepository(ProjectMember)
-    private projectMemberRepo: Repository<ProjectMember>,
-    @InjectRepository(ProjectRole)
-    private projectRoleRepo: Repository<ProjectRole>,
-    @InjectRepository(Task)
-    private taskRepo: Repository<Task>,
-    @InjectRepository(Board)
-    private boardRepo: Repository<Board>,
-    @InjectRepository(SubTask)
-    private subtaskRepo: Repository<SubTask>,
-    @InjectRepository(TaskComment)
-    private taskCommentRepo: Repository<TaskComment>,
-    @InjectRepository(TimeLog)
-    private timeLogRepo: Repository<TimeLog>,
+    private dataSource: DataSource,
   ) {}
 
+  get projectMemberRepo() {
+    return this.dataSource.getRepository(ProjectMember);
+  }
+
+  get projectRoleRepo() {
+    return this.dataSource.getRepository(ProjectRole);
+  }
+
+  get taskRepo() {
+    return this.dataSource.getRepository(Task);
+  }
+
+  get boardRepo() {
+    return this.dataSource.getRepository(Board);
+  }
+
+  get subtaskRepo() {
+    return this.dataSource.getRepository(SubTask);
+  }
+
+  get taskCommentRepo() {
+    return this.dataSource.getRepository(TaskComment);
+  }
+
+  get timeLogRepo() {
+    return this.dataSource.getRepository(TimeLog);
+  }
+
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    // Skip all project-auth logic for routes explicitly marked @Public()
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),
@@ -59,21 +72,23 @@ export class ProjectAuthGuard implements CanActivate {
       throw new ForbiddenException('User is not authenticated');
     }
 
-    const requiredPermission = this.reflector.getAllAndOverride<RequiredPermissionInfo>(
-      REQUIRE_PERMISSION_KEY,
-      [context.getHandler(), context.getClass()],
-    );
+    const requiredPermission =
+      this.reflector.getAllAndOverride<RequiredPermissionInfo>(
+        REQUIRE_PERMISSION_KEY,
+        [context.getHandler(), context.getClass()],
+      );
 
     const projectId = await this.resolveProjectId(request);
 
     if (!projectId) {
       if (requiredPermission) {
-        throw new BadRequestException('Project context is required for this route');
+        throw new BadRequestException(
+          'Project context is required for this route',
+        );
       }
       return true;
     }
 
-    // Load active member context
     const actor = await this.projectMemberRepo.findOne({
       where: { project: { id: projectId }, user: { id: user.id } },
       relations: { project: true, role: true, user: true },
@@ -83,10 +98,8 @@ export class ProjectAuthGuard implements CanActivate {
       throw new ForbiddenException('You do not have access to this project');
     }
 
-    // Attach member context to request
     request.projectMember = actor;
 
-    // Check required permission if present
     if (requiredPermission) {
       const isAllowed = ProjectAuthEvaluator.hasPermission(
         actor,
@@ -100,10 +113,8 @@ export class ProjectAuthGuard implements CanActivate {
       }
     }
 
-    // ABAC blending & parameter-level hierarchy checks
     const { params, body, method } = request;
 
-    // Member role updates or member removal
     if (params.memberId && request.route.path.includes('/members/:memberId')) {
       const target = await this.projectMemberRepo.findOne({
         where: { id: params.memberId, project: { id: projectId } },
@@ -117,10 +128,11 @@ export class ProjectAuthGuard implements CanActivate {
 
       if (method === 'PATCH') {
         if (isTargetOwner && target.role.level !== 100) {
-          throw new BadRequestException('Project owner cannot be downgraded here');
+          throw new BadRequestException(
+            'Project owner cannot be downgraded here',
+          );
         }
 
-        // Admins are peers — no admin may change another admin's role
         const actorIsAdmin = actor.role.level === 100;
         const targetIsAdmin = target.role.level === 100;
         const isSelfUpdate = actor.id === target.id;
@@ -143,15 +155,19 @@ export class ProjectAuthGuard implements CanActivate {
             where: { id: body.roleId, project: { id: projectId } },
           });
           if (!targetRole) {
-            throw new NotFoundException('Target role not found in this project');
+            throw new NotFoundException(
+              'Target role not found in this project',
+            );
           }
-          if (actor.role.level !== 100 && targetRole.level >= actor.role.level) {
+          if (
+            actor.role.level !== 100 &&
+            targetRole.level >= actor.role.level
+          ) {
             throw new ForbiddenException(
               'You cannot assign a role level equal to or higher than your own',
             );
           }
 
-          // Prevent last-admin self-demotion
           if (isSelfUpdate && actorIsAdmin && targetRole.level < 100) {
             const adminCount = await this.projectMemberRepo
               .createQueryBuilder('pm')
@@ -181,7 +197,6 @@ export class ProjectAuthGuard implements CanActivate {
       }
     }
 
-    // Comment updates or deletions
     if (params.cid && request.route.path.includes('/comments/:cid')) {
       const comment = await this.taskCommentRepo.findOne({
         where: { id: params.cid },
@@ -197,15 +212,20 @@ export class ProjectAuthGuard implements CanActivate {
         }
       } else if (method === 'DELETE') {
         if (comment.user.id !== user.id) {
-          const hasTasksDelete = ProjectAuthEvaluator.hasPermission(actor, 'tasks', 'delete');
+          const hasTasksDelete = ProjectAuthEvaluator.hasPermission(
+            actor,
+            'tasks',
+            'delete',
+          );
           if (!hasTasksDelete) {
-            throw new ForbiddenException('You can only delete your own comments unless you have task deletion rights');
+            throw new ForbiddenException(
+              'You can only delete your own comments unless you have task deletion rights',
+            );
           }
         }
       }
     }
 
-    // Time log deletions
     if (params.lid && request.route.path.includes('/time-logs/:lid')) {
       const timeLog = await this.timeLogRepo.findOne({
         where: { id: params.lid },
@@ -226,12 +246,10 @@ export class ProjectAuthGuard implements CanActivate {
     const { params = {}, query = {}, body = {}, route } = request;
     const path = route?.path || '';
 
-    // 1. Direct projectId
     if (params.projectId) return params.projectId;
     if (body.projectId) return body.projectId;
     if (query.projectId) return query.projectId;
 
-    // 2. Boards column endpoints
     if (path.includes('/boards/:id') && params.id) {
       const board = await this.boardRepo.findOne({
         where: { id: params.id },
@@ -247,7 +265,6 @@ export class ProjectAuthGuard implements CanActivate {
       return board?.project?.id || null;
     }
 
-    // 3. Task endpoints (tasks/:id or tasks/:id/...)
     if (path.includes('/tasks/:id') && params.id) {
       const task = await this.taskRepo.findOne({
         where: { id: params.id },
@@ -256,7 +273,6 @@ export class ProjectAuthGuard implements CanActivate {
       return task?.project?.id || null;
     }
 
-    // 4. Subtask endpoints (tasks/:id/subtasks/:sid or subtasks/:sid)
     const subtaskId = params.sid;
     if (subtaskId) {
       const subtask = await this.subtaskRepo.findOne({
@@ -266,7 +282,6 @@ export class ProjectAuthGuard implements CanActivate {
       return subtask?.task?.project?.id || null;
     }
 
-    // 5. Comment endpoints (comments/:cid)
     if (params.cid) {
       const comment = await this.taskCommentRepo.findOne({
         where: { id: params.cid },
@@ -275,13 +290,21 @@ export class ProjectAuthGuard implements CanActivate {
       return comment?.task?.project?.id || null;
     }
 
-    // 6. TimeLog endpoints (time-logs/:lid)
     if (params.lid) {
       const timeLog = await this.timeLogRepo.findOne({
         where: { id: params.lid },
         relations: { task: { project: true } },
       });
       return timeLog?.task?.project?.id || null;
+    }
+
+    if (path.includes('/activity-logs/:id') && params.id) {
+      const activityRepo = this.dataSource.getRepository(ActivityLog);
+      const activity = await activityRepo.findOne({
+        where: { id: params.id },
+        relations: { project: true },
+      });
+      return activity?.project?.id || null;
     }
 
     return null;
