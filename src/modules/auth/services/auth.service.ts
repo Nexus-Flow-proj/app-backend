@@ -4,7 +4,7 @@ import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import { RefreshToken } from '../entities/refresh-token.entity';
 import { DataSource, EntityManager, Repository } from 'typeorm';
-import { JwtService } from '@nestjs/jwt';
+import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { SignUpDto } from '../dtos/signup.dto';
 import {
@@ -331,10 +331,14 @@ export class AuthService {
   ): Promise<GeneratedTokens> {
     const payload = { sub: user.id, email: user.email };
 
-    const accessToken = this.jwtService.sign(payload, {
-      secret: this.configService.get<string>('JWT_ACCESS_TOKEN_SECRET'),
-      expiresIn: '30m',
-    });
+    const signOptions: JwtSignOptions = {
+      secret: this.configService.getOrThrow<string>('JWT_ACCESS_TOKEN_SECRET'),
+      expiresIn: this.configService.getOrThrow<JwtSignOptions['expiresIn']>(
+        'jwt.accessExpiresIn',
+      ),
+    };
+
+    const accessToken = this.jwtService.sign(payload, signOptions);
 
     const rawRefreshToken = crypto.randomBytes(64).toString('hex');
     const tokenHash = crypto
