@@ -1,9 +1,13 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { Strategy } from 'passport-google-oauth20';
-import { AuthService } from '../services/auth.service';
+import {
+  AuthService,
+  GoogleAuthFlow,
+  GoogleAuthResult,
+} from '../services/auth.service';
 import { GoogleUserDto } from '../dtos/google-user.dto';
-import { User } from '@modules/users/entities/user.entity';
+import { Request } from 'express';
 
 interface GooglePassportProfile {
   id: string;
@@ -24,14 +28,17 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
       callbackURL: process.env.GOOGLE_CALLBACK_URL!,
       scope: ['email', 'profile'],
+      passReqToCallback: true,
+      state: true,
     });
   }
 
   async validate(
+    req: Request,
     _accessToken: string,
     _refreshToken: string,
     profile: GooglePassportProfile,
-  ): Promise<User> {
+  ): Promise<GoogleAuthResult> {
     const { id, emails, name, photos } = profile;
 
     if (!emails || emails.length === 0) {
@@ -48,6 +55,31 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
       avatarUrl: photos?.[0]?.value ?? null,
     };
 
-    return this.authService.findOrCreateGoogleUser(googleUser);
+    const flow = this.getGoogleFlow(req);
+
+    if (!flow) {
+      return {
+        ok: false,
+        flow: 'login',
+        message: 'Invalid Google OAuth flow.',
+      };
+    }
+
+    if (flow === 'login') {
+      return this.authService.loginWithGoogle(googleUser);
+    }
+
+    return this.authService.signupWithGoogle(googleUser);
+  }
+
+  private getGoogleFlow(req: Request): GoogleAuthFlow | null {
+    const state = req.query.state;
+    const flow = Array.isArray(state) ? state[0] : state;
+
+    if (flow !== 'login' && flow !== 'signup') {
+      return null;
+    }
+
+    return flow;
   }
 }

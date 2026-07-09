@@ -17,6 +17,7 @@ import { BoardsModule } from './modules/boards/boards.module';
 import { CanvasModule } from '@modules/canvas/canvas.module';
 import { ActivitiesModule } from './modules/activities/activities.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
         };
       },
     }),
+    EventEmitterModule.forRoot(),
     DatabaseModule,
     AuthModule,
     UsersModule,
