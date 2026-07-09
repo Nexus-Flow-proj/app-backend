@@ -40,7 +40,13 @@ export interface RolePermissions {
     moveTasks: boolean;
     manageColumns: boolean;
   };
+  roles: {
+    create: boolean;
+    update: boolean;
+    delete: boolean;
+  };
 }
+
 
 @Entity('project_roles')
 @Unique(['project', 'name'])

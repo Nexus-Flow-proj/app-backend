@@ -12,12 +12,14 @@ import { CreateBoardColumnDto } from './dtos/create-board-column.dto';
 import { UpdateBoardColumnDto } from './dtos/update-board-column.dto';
 import { ReorderBoardColumnsDto } from './dtos/reorder-board-columns.dto';
 import { BoardColumnResponseDto } from './dtos/board-column-response.dto';
+import { ActivitiesService } from '@modules/activities/activities.service';
 
 @Injectable()
 export class BoardsService {
   constructor(
     @InjectRepository(Board)
     private boardRepo: Repository<Board>,
+    private activitiesService: ActivitiesService,
   ) {}
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
@@ -56,6 +58,7 @@ export class BoardsService {
   async createColumn(
     projectId: string,
     dto: CreateBoardColumnDto,
+    userId: string,
   ): Promise<BoardColumnResponseDto> {
     const existing = await this.boardRepo.count({
       where: { project: { id: projectId }, name: dto.name },
@@ -85,6 +88,13 @@ export class BoardsService {
     });
 
     const saved = await this.boardRepo.save(column);
+    await this.activitiesService.logActivity(
+      userId,
+      projectId,
+      `created board column: ${saved.name}`,
+      'board',
+      saved.id,
+    );
     return this.toBoardColumnView(saved);
   }
 
@@ -93,6 +103,7 @@ export class BoardsService {
   async updateColumn(
     columnId: string,
     dto: UpdateBoardColumnDto,
+    userId: string,
   ): Promise<BoardColumnResponseDto> {
     const column = await this.getColumnOrFail(columnId);
 
@@ -109,12 +120,19 @@ export class BoardsService {
 
     Object.assign(column, dto);
     const saved = await this.boardRepo.save(column);
+    await this.activitiesService.logActivity(
+      userId,
+      column.project.id,
+      `updated board column: ${saved.name}`,
+      'board',
+      saved.id,
+    );
     return this.toBoardColumnView(saved);
   }
 
   // ─── Delete ──────────────────────────────────────────────────────────────
 
-  async deleteColumn(columnId: string): Promise<void> {
+  async deleteColumn(columnId: string, userId: string): Promise<void> {
     const column = await this.getColumnOrFail(columnId);
 
     if (column.isProtected) {
@@ -124,6 +142,13 @@ export class BoardsService {
     }
 
     await this.boardRepo.remove(column);
+    await this.activitiesService.logActivity(
+      userId,
+      column.project.id,
+      `deleted board column: ${column.name}`,
+      'board',
+      columnId,
+    );
   }
 
   // ─── Reorder ─────────────────────────────────────────────────────────────
@@ -131,6 +156,7 @@ export class BoardsService {
   async reorderColumns(
     projectId: string,
     dto: ReorderBoardColumnsDto,
+    userId: string,
   ): Promise<BoardColumnResponseDto[]> {
     const columnIds = dto.columns.map((c) => c.id);
 
@@ -149,6 +175,14 @@ export class BoardsService {
       dto.columns.map((item) =>
         this.boardRepo.update(item.id, { sortOrder: item.sortOrder }),
       ),
+    );
+
+    await this.activitiesService.logActivity(
+      userId,
+      projectId,
+      'reordered board columns',
+      'board',
+      projectId,
     );
 
     const updated = await this.boardRepo.find({

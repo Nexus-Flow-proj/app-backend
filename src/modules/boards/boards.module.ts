@@ -9,6 +9,7 @@ import { Task } from '@modules/tasks/entities/task.entity';
 import { SubTask } from '@modules/tasks/entities/subtask.entity';
 import { TaskComment } from '@modules/tasks/entities/task-comment.entity';
 import { TimeLog } from '@modules/tasks/entities/time-log.entity';
+import { ActivitiesModule } from '@modules/activities/activities.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { TimeLog } from '@modules/tasks/entities/time-log.entity';
       TaskComment,
       TimeLog,
     ]),
+    ActivitiesModule,
   ],
   providers: [BoardsService],
   controllers: [BoardsController],

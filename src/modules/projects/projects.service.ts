@@ -61,6 +61,7 @@ export const DEFAULT_ROLE_PRESETS = [
         generateWithAi: true,
       },
       board: { read: true, moveTasks: true, manageColumns: true },
+      roles: { create: true, update: true, delete: true },
     },
   },
   {
@@ -86,6 +87,7 @@ export const DEFAULT_ROLE_PRESETS = [
         generateWithAi: true,
       },
       board: { read: true, moveTasks: true, manageColumns: true },
+      roles: { create: true, update: true, delete: true },
     },
   },
   {
@@ -111,6 +113,7 @@ export const DEFAULT_ROLE_PRESETS = [
         generateWithAi: false,
       },
       board: { read: true, moveTasks: true, manageColumns: false },
+      roles: { create: false, update: false, delete: false },
     },
   },
   {
@@ -136,6 +139,7 @@ export const DEFAULT_ROLE_PRESETS = [
         generateWithAi: false,
       },
       board: { read: true, moveTasks: true, manageColumns: false },
+      roles: { create: false, update: false, delete: false },
     },
   },
   {
@@ -161,6 +165,7 @@ export const DEFAULT_ROLE_PRESETS = [
         generateWithAi: false,
       },
       board: { read: true, moveTasks: false, manageColumns: false },
+      roles: { create: false, update: false, delete: false },
     },
   },
 ] as const;
@@ -186,50 +191,59 @@ export class ProjectsService {
       throw new UnauthorizedException('User not found');
     }
 
-    const projectDto = await this.projectRepo.manager.transaction(async (manager) => {
-      const project = manager.create(Project, {
-        name: body.name,
-        description: body.description ?? null,
-        deadline: body.deadline ? new Date(body.deadline) : null,
-        status: body.status ?? ProjectStatus.ACTIVE,
-        color: body.color,
-        admin: owner,
-      });
+    const projectDto = await this.projectRepo.manager.transaction(
+      async (manager) => {
+        const project = manager.create(Project, {
+          name: body.name,
+          description: body.description ?? null,
+          deadline: body.deadline ? new Date(body.deadline) : null,
+          status: body.status ?? ProjectStatus.ACTIVE,
+          color: body.color,
+          admin: owner,
+        });
 
-      const savedProject = await manager.save(Project, project);
+        const savedProject = await manager.save(Project, project);
 
-      const rolesToCreate = DEFAULT_ROLE_PRESETS.map((preset) =>
-        manager.create(ProjectRoleEntity, {
-          ...preset,
-          project: savedProject,
-        }),
-      );
-      const savedRoles = await manager.save(ProjectRoleEntity, rolesToCreate);
-      const adminRole = savedRoles.find((role) => role.level === 100);
+        const rolesToCreate = DEFAULT_ROLE_PRESETS.map((preset) =>
+          manager.create(ProjectRoleEntity, {
+            ...preset,
+            project: savedProject,
+          }),
+        );
+        const savedRoles = await manager.save(ProjectRoleEntity, rolesToCreate);
+        const adminRole = savedRoles.find((role) => role.level === 100);
 
-      if (!adminRole) {
-        throw new NotFoundException('Default admin role could not be created');
-      }
+        if (!adminRole) {
+          throw new NotFoundException(
+            'Default admin role could not be created',
+          );
+        }
 
-      await manager.save(
-        manager.create(ProjectMember, {
-          project: savedProject,
-          user: owner,
-          role: adminRole,
-        }),
-      );
+        await manager.save(
+          manager.create(ProjectMember, {
+            project: savedProject,
+            user: owner,
+            role: adminRole,
+          }),
+        );
 
-      const createdMember = await manager.findOne(ProjectMember, {
-        where: { project: { id: savedProject.id }, user: { id: owner.id } },
-        relations: { project: true, user: true, role: true },
-      });
+        const createdMember = await manager.findOne(ProjectMember, {
+          where: { project: { id: savedProject.id }, user: { id: owner.id } },
+          relations: { project: true, user: true, role: true },
+        });
 
-      return {
-        dto: this.toProjectView(savedProject, 1, owner.id, createdMember ?? undefined),
-        projectId: savedProject.id,
-        projectName: savedProject.name,
-      };
-    });
+        return {
+          dto: this.toProjectView(
+            savedProject,
+            1,
+            owner.id,
+            createdMember ?? undefined,
+          ),
+          projectId: savedProject.id,
+          projectName: savedProject.name,
+        };
+      },
+    );
 
     // Log activity OUTSIDE the transaction to avoid cross-connection deadlocks
     await this.activitiesService.logActivity(
@@ -312,8 +326,8 @@ export class ProjectsService {
     }
 
     const currentMember = userId
-      ? savedProject.members?.find((m) => m.user?.id === userId) ??
-        project.members?.find((m) => m.user?.id === userId)
+      ? (savedProject.members?.find((m) => m.user?.id === userId) ??
+        project.members?.find((m) => m.user?.id === userId))
       : undefined;
 
     return this.toProjectView(
@@ -390,7 +404,7 @@ export class ProjectsService {
       .trim();
 
     const frontendUrl = this.configService.get<string>('env.frontendUrl');
-    const inviteLink = `${frontendUrl}/invite/${token}`;
+    const inviteLink = `${frontendUrl}/project/invitation/${token}`;
 
     await this.mailService.sendProjectInvite(
       normalizedEmail,
@@ -807,7 +821,9 @@ export class ProjectsService {
       adminId,
       memberCount,
       color: project.color,
-      currentMember: currentMember ? this.toMemberView(currentMember) : undefined,
+      currentMember: currentMember
+        ? this.toMemberView(currentMember)
+        : undefined,
       created_at: project.created_at,
       updated_at: project.updated_at,
     };

@@ -245,7 +245,7 @@ export class ProjectsController {
 
   @Post(':projectId/roles')
   @UseGuards(CsrfGuard)
-  @RequirePermission('project', 'updateSettings')
+  @RequirePermission('roles', 'create')
   @Serialize(ProjectRoleResponseDto)
   async createRole(
     @Param('projectId') projectId: string,
@@ -258,7 +258,7 @@ export class ProjectsController {
 
   @Patch(':projectId/roles/:roleId')
   @UseGuards(CsrfGuard)
-  @RequirePermission('project', 'updateSettings')
+  @RequirePermission('roles', 'update')
   @Serialize(ProjectRoleResponseDto)
   async updateRole(
     @Param('projectId') projectId: string,
@@ -277,7 +277,7 @@ export class ProjectsController {
 
   @Delete(':projectId/roles/:roleId')
   @UseGuards(CsrfGuard)
-  @RequirePermission('project', 'updateSettings')
+  @RequirePermission('roles', 'delete')
   async deleteRole(
     @Param('projectId') projectId: string,
     @Param('roleId') roleId: string,
