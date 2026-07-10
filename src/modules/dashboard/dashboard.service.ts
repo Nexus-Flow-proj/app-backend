@@ -194,7 +194,7 @@ export class DashboardService {
         title: t.title,
         projectId: t.project.id,
         projectName: t.project.name,
-        dueDate: t.deadline ? t.deadline.toISOString() : '',
+        dueDate: t.deadline ? new Date(t.deadline).toISOString() : '',
         priority: t.priority,
       }));
     }
