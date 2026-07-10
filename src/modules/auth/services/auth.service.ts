@@ -4,7 +4,7 @@ import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import { RefreshToken } from '../entities/refresh-token.entity';
 import { DataSource, EntityManager, Repository } from 'typeorm';
-import { JwtService } from '@nestjs/jwt';
+import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { SignUpDto } from '../dtos/signup.dto';
 import {
@@ -29,6 +29,15 @@ export interface GeneratedTokens {
 
 export interface AuthResponse extends GeneratedTokens {
   user: UserResponseDto;
+}
+
+export type GoogleAuthFlow = 'login' | 'signup';
+
+export interface GoogleAuthResult {
+  ok: boolean;
+  flow: GoogleAuthFlow;
+  user?: User;
+  message?: string;
 }
 
 @Injectable()
@@ -235,22 +244,49 @@ export class AuthService {
     });
   }
 
-  async findOrCreateGoogleUser(dto: GoogleUserDto): Promise<User> {
-    let user = await this.userRepository.findOne({
+  async loginWithGoogle(dto: GoogleUserDto): Promise<GoogleAuthResult> {
+    const user = await this.userRepository.findOne({
       where: { googleId: dto.googleId },
     });
-    if (user) return user;
 
-    user = await this.userRepository.findOne({
+    if (!user) {
+      return {
+        ok: false,
+        flow: 'login',
+        message: 'Google account not linked. Please sign up with Google first.',
+      };
+    }
+
+    return {
+      ok: true,
+      flow: 'login',
+      user,
+    };
+  }
+
+  async signupWithGoogle(dto: GoogleUserDto): Promise<GoogleAuthResult> {
+    const existingByGoogleId = await this.userRepository.findOne({
+      where: { googleId: dto.googleId },
+    });
+
+    if (existingByGoogleId) {
+      return {
+        ok: false,
+        flow: 'signup',
+        message: 'Google account already exists. Please log in instead.',
+      };
+    }
+
+    const existingByEmail = await this.userRepository.findOne({
       where: { email: dto.email },
     });
 
-    if (user) {
-      user.googleId = dto.googleId;
-      if (!user.avatarUrl && dto.avatarUrl) {
-        user.avatarUrl = dto.avatarUrl;
-      }
-      return this.userRepository.save(user);
+    if (existingByEmail) {
+      return {
+        ok: false,
+        flow: 'signup',
+        message: 'Email already in use. Please log in instead.',
+      };
     }
 
     const newUser = this.userRepository.create({
@@ -260,7 +296,14 @@ export class AuthService {
       lastName: dto.lastName,
       avatarUrl: dto.avatarUrl ?? undefined,
     });
-    return this.userRepository.save(newUser);
+
+    const savedUser = await this.userRepository.save(newUser);
+
+    return {
+      ok: true,
+      flow: 'signup',
+      user: savedUser,
+    };
   }
 
   async getMe(userId: string): Promise<UserResponseDto> {
@@ -288,10 +331,14 @@ export class AuthService {
   ): Promise<GeneratedTokens> {
     const payload = { sub: user.id, email: user.email };
 
-    const accessToken = this.jwtService.sign(payload, {
-      secret: this.configService.get<string>('JWT_ACCESS_TOKEN_SECRET'),
-      expiresIn: '30m',
-    });
+    const signOptions: JwtSignOptions = {
+      secret: this.configService.getOrThrow<string>('JWT_ACCESS_TOKEN_SECRET'),
+      expiresIn: this.configService.getOrThrow<JwtSignOptions['expiresIn']>(
+        'jwt.accessExpiresIn',
+      ),
+    };
+
+    const accessToken = this.jwtService.sign(payload, signOptions);
 
     const rawRefreshToken = crypto.randomBytes(64).toString('hex');
     const tokenHash = crypto

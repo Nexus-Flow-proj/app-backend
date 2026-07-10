@@ -22,6 +22,13 @@ import { UpdateTaskDto } from './dtos/update-task.dto';
 import { CreateSubTaskDto, UpdateSubTaskDto } from './dtos/subtask.dto';
 import { CreateCommentDto, UpdateCommentDto } from './dtos/comment.dto';
 import { CreateTimeLogDto } from './dtos/time-log.dto';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { DOMAIN_EVENTS } from '@modules/realtime/constants/domain-events';
+import { TaskCreatedEvent } from '@modules/realtime/domain-events/task-created.event';
+import { TaskUpdatedEvent } from '@modules/realtime/domain-events/task-updated.event';
+import { TaskDeletedEvent } from '@modules/realtime/domain-events/task-deleted.event';
+import { TaskCreatedPayload, TaskDeletedPayload, TaskUpdatedPayload } from '@modules/realtime/interfaces/socket-payloads.interface';
+import { mapTaskToApiTaskSummary } from '@modules/realtime/mappers/task-socket.mapper';
 
 @Injectable()
 export class TasksService {
@@ -36,6 +43,7 @@ export class TasksService {
     private taskCommentRepo: Repository<TaskComment>,
     @InjectRepository(Board) private boardRepo: Repository<Board>,
     private activitiesService: ActivitiesService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   // ─── Helpers ───────────────────────────────────────────────────────────
@@ -190,6 +198,16 @@ export class TasksService {
       'task',
       savedTask.id,
     );
+
+    const payload: TaskCreatedPayload = {
+      projectId: task.project.id,
+      task: mapTaskToApiTaskSummary(savedTask),
+    };
+
+    this.eventEmitter.emit(
+      DOMAIN_EVENTS.TASK.CREATED,
+      new TaskCreatedEvent(payload),
+    );
     return savedTask;
   }
 
@@ -295,6 +313,15 @@ export class TasksService {
       'task',
       savedTask.id,
     );
+    const payload: TaskUpdatedPayload = {
+      projectId: task.project.id,
+      task: mapTaskToApiTaskSummary(savedTask),
+    };
+
+    this.eventEmitter.emit(
+      DOMAIN_EVENTS.TASK.UPDATED,
+      new TaskUpdatedEvent(payload),
+    );
     return savedTask;
   }
 
@@ -311,6 +338,16 @@ export class TasksService {
       `deleted task: ${task.title}`,
       'task',
       taskId,
+    );
+
+    const payload: TaskDeletedPayload = {
+      projectId: task.project.id,
+      taskId: task.id,
+    };
+
+    this.eventEmitter.emit(
+      DOMAIN_EVENTS.TASK.DELETED,
+      new TaskDeletedEvent(payload),
     );
   }
 

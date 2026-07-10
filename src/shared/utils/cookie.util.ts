@@ -67,3 +67,17 @@ export function clearAuthCookies(res: Response): void {
   res.clearCookie('refresh_token', { ...cookieOptions, path: '/api/auth' });
   res.clearCookie('csrf_token', cookieOptions);
 }
+
+export function parseCookie(cookieHeader: string): RequestCookies {
+  return cookieHeader.split(';').reduce((cookies, part) => {
+    const [key, ...valueParts] = part.trim().split('=');
+
+    if (!key) return cookies;
+
+    cookies[key as keyof RequestCookies] = decodeURIComponent(
+      valueParts.join('='),
+    );
+
+    return cookies;
+  }, {} as RequestCookies);
+}
