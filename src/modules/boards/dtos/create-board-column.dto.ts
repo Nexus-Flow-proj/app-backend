@@ -14,7 +14,7 @@ export class CreateBoardColumnDto {
   @IsNumber()
   @IsOptional()
   @Min(0)
-  sortOrder?: number; // If omitted, auto-placed at end (last.sortOrder + 1000)
+  sortOrder?: number;
 
   @IsString()
   @IsOptional()
