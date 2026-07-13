@@ -13,6 +13,18 @@ import { UpdateBoardColumnDto } from './dtos/update-board-column.dto';
 import { ReorderBoardColumnsDto } from './dtos/reorder-board-columns.dto';
 import { BoardColumnResponseDto } from './dtos/board-column-response.dto';
 import { ActivitiesService } from '@modules/activities/activities.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { DOMAIN_EVENTS } from '@modules/realtime/constants/domain-events';
+import { ColumnCreatedEvent } from '@modules/realtime/domain-events/column-created.event';
+import { ColumnUpdatedEvent } from '@modules/realtime/domain-events/column-updated.event';
+import { ColumnDeletedEvent } from '@modules/realtime/domain-events/column-deleted.event';
+import { ColumnReorderedEvent } from '@modules/realtime/domain-events/column-reordered.event';
+import {
+  ColumnCreatedPayload,
+  ColumnUpdatedPayload,
+  ColumnDeletedPayload,
+  ColumnReorderedPayload,
+} from '@modules/realtime/interfaces/socket-payloads.interface';
 
 @Injectable()
 export class BoardsService {
@@ -20,6 +32,7 @@ export class BoardsService {
     @InjectRepository(Board)
     private boardRepo: Repository<Board>,
     private activitiesService: ActivitiesService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
@@ -95,6 +108,14 @@ export class BoardsService {
       'board',
       saved.id,
     );
+    const payload: ColumnCreatedPayload = {
+      projectId,
+      column: this.toBoardColumnView(saved),
+    };
+    this.eventEmitter.emit(
+      DOMAIN_EVENTS.COLUMN.CREATED,
+      new ColumnCreatedEvent(payload),
+    );
     return this.toBoardColumnView(saved);
   }
 
@@ -127,6 +148,14 @@ export class BoardsService {
       'board',
       saved.id,
     );
+    const payload: ColumnUpdatedPayload = {
+      projectId: column.project.id,
+      column: this.toBoardColumnView(saved),
+    };
+    this.eventEmitter.emit(
+      DOMAIN_EVENTS.COLUMN.UPDATED,
+      new ColumnUpdatedEvent(payload),
+    );
     return this.toBoardColumnView(saved);
   }
 
@@ -148,6 +177,14 @@ export class BoardsService {
       `deleted board column: ${column.name}`,
       'board',
       columnId,
+    );
+    const payload: ColumnDeletedPayload = {
+      projectId: column.project.id,
+      columnId,
+    };
+    this.eventEmitter.emit(
+      DOMAIN_EVENTS.COLUMN.DELETED,
+      new ColumnDeletedEvent(payload),
     );
   }
 
@@ -183,6 +220,17 @@ export class BoardsService {
       'reordered board columns',
       'board',
       projectId,
+    );
+    const payload: ColumnReorderedPayload = {
+      projectId,
+      columns: dto.columns.map((item) => ({
+        id: item.id,
+        sortOrder: item.sortOrder,
+      })),
+    };
+    this.eventEmitter.emit(
+      DOMAIN_EVENTS.COLUMN.REORDERED,
+      new ColumnReorderedEvent(payload),
     );
 
     const updated = await this.boardRepo.find({

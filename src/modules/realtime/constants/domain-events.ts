@@ -1,4 +1,20 @@
 export const DOMAIN_EVENTS = {
+  SUBTASK: {
+    CREATED: 'subtask.created',
+    UPDATED: 'subtask.updated',
+    DELETED: 'subtask.deleted',
+  },
+  COMMENT: {
+    CREATED: 'comment.created',
+    UPDATED: 'comment.updated',
+    DELETED: 'comment.deleted',
+  },
+  COLUMN: {
+    CREATED: 'column.created',
+    UPDATED: 'column.updated',
+    DELETED: 'column.deleted',
+    REORDERED: 'column.reordered',
+  },
   TASK: {
     CREATED: 'task.created',
     UPDATED: 'task.updated',

@@ -27,8 +27,26 @@ import { DOMAIN_EVENTS } from '@modules/realtime/constants/domain-events';
 import { TaskCreatedEvent } from '@modules/realtime/domain-events/task-created.event';
 import { TaskUpdatedEvent } from '@modules/realtime/domain-events/task-updated.event';
 import { TaskDeletedEvent } from '@modules/realtime/domain-events/task-deleted.event';
-import { TaskCreatedPayload, TaskDeletedPayload, TaskUpdatedPayload } from '@modules/realtime/interfaces/socket-payloads.interface';
+import {
+  TaskCreatedPayload,
+  TaskDeletedPayload,
+  TaskUpdatedPayload,
+  CommentCreatedPayload,
+  CommentUpdatedPayload,
+  CommentDeletedPayload,
+  SubtaskCreatedPayload,
+  SubtaskUpdatedPayload,
+  SubtaskDeletedPayload,
+} from '@modules/realtime/interfaces/socket-payloads.interface';
+import { CommentCreatedEvent } from '@modules/realtime/domain-events/comment-created.event';
+import { CommentUpdatedEvent } from '@modules/realtime/domain-events/comment-updated.event';
+import { CommentDeletedEvent } from '@modules/realtime/domain-events/comment-deleted.event';
 import { mapTaskToApiTaskSummary } from '@modules/realtime/mappers/task-socket.mapper';
+import { mapCommentToApiComment } from '@modules/realtime/mappers/comment-socket.mapper';
+import { mapSubtaskToApiSubtask } from '@modules/realtime/mappers/subtask-socket.mapper';
+import { SubtaskCreatedEvent } from '@modules/realtime/domain-events/subtask-created.event';
+import { SubtaskUpdatedEvent } from '@modules/realtime/domain-events/subtask-updated.event';
+import { SubtaskDeletedEvent } from '@modules/realtime/domain-events/subtask-deleted.event';
 
 @Injectable()
 export class TasksService {
@@ -79,6 +97,15 @@ export class TasksService {
       );
     }
     return column;
+  }
+
+  private async getTaskOrFail(taskId: string): Promise<Task> {
+    const task = await this.taskRepo.findOne({
+      where: { id: taskId },
+      relations: { project: true },
+    });
+    if (!task) throw new NotFoundException('Task not found');
+    return task;
   }
 
   // ─── Tasks ─────────────────────────────────────────────────────────────
@@ -354,11 +381,7 @@ export class TasksService {
   // ─── Subtasks ──────────────────────────────────────────────────────────
 
   async createSubtask(taskId: string, dto: CreateSubTaskDto, userId: string) {
-    const task = await this.taskRepo.findOne({
-      where: { id: taskId },
-      relations: { project: true },
-    });
-    if (!task) throw new NotFoundException('Task not found');
+    const task = await this.getTaskOrFail(taskId);
 
     const maxQuery = await this.subtaskRepo
       .createQueryBuilder('subtask')
@@ -375,7 +398,18 @@ export class TasksService {
       sortOrder: nextSortOrder,
     });
 
-    return this.subtaskRepo.save(subtask);
+    const savedSubtask = await this.subtaskRepo.save(subtask);
+    
+    const payload: SubtaskCreatedPayload = {
+      projectId: task.project.id,
+      taskId: task.id,
+      subtask: mapSubtaskToApiSubtask(savedSubtask),
+    };
+    this.eventEmitter.emit(
+      DOMAIN_EVENTS.SUBTASK.CREATED,
+      new SubtaskCreatedEvent(payload),
+    );
+    return savedSubtask;
   }
 
   async updateSubtask(
@@ -386,19 +420,30 @@ export class TasksService {
   ) {
     const subtask = await this.subtaskRepo.findOne({
       where: { id: subtaskId, task: { id: taskId } },
+      relations: { task: { project: true } },
     });
     if (!subtask) throw new NotFoundException('Subtask not found');
 
     if (dto.title !== undefined) subtask.title = dto.title;
     if (dto.completed !== undefined) subtask.isCompleted = dto.completed;
+    const savedSubtask = await this.subtaskRepo.save(subtask);
 
-    return this.subtaskRepo.save(subtask);
+    const payload: SubtaskUpdatedPayload = {
+      projectId: subtask.task.project.id,
+      taskId: subtask.task.id,
+      subtask: mapSubtaskToApiSubtask(savedSubtask),
+    };
+    this.eventEmitter.emit(
+      DOMAIN_EVENTS.SUBTASK.UPDATED,
+      new SubtaskUpdatedEvent(payload),
+    );
+    return savedSubtask;
   }
 
   async deleteSubtask(subtaskId: string, userId: string) {
     const subtask = await this.subtaskRepo.findOne({
       where: { id: subtaskId },
-      relations: { task: true },
+      relations: { task: { project: true } },
     });
 
     if (!subtask) {
@@ -406,6 +451,16 @@ export class TasksService {
     }
 
     await this.subtaskRepo.delete({ id: subtaskId });
+
+    const payload: SubtaskDeletedPayload = {
+      projectId: subtask.task.project.id,
+      taskId: subtask.task.id,
+      subtaskId: subtask.id,
+    };
+    this.eventEmitter.emit(
+      DOMAIN_EVENTS.SUBTASK.DELETED,
+      new SubtaskDeletedEvent(payload),
+    );
   }
 
   // ─── Comments ──────────────────────────────────────────────────────────
@@ -417,10 +472,22 @@ export class TasksService {
     });
     if (!task) throw new NotFoundException('Task not found');
 
+    const currentUser = await this.userRepo.findOne({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        avatarUrl: true,
+      },
+    });
+    if (!currentUser) throw new NotFoundException('User not found');
+
     const comment = this.taskCommentRepo.create({
       body: dto.body,
       task,
-      user: { id: userId } as User,
+      user: currentUser,
     });
 
     const savedComment = await this.taskCommentRepo.save(comment);
@@ -430,6 +497,15 @@ export class TasksService {
       `added a comment on: ${task.title}`,
       'comment',
       savedComment.id,
+    );
+    const payload: CommentCreatedPayload = {
+      projectId: task.project.id,
+      taskId: task.id,
+      comment: mapCommentToApiComment(savedComment),
+    };
+    this.eventEmitter.emit(
+      DOMAIN_EVENTS.COMMENT.CREATED,
+      new CommentCreatedEvent(payload),
     );
     return savedComment;
   }
@@ -455,23 +531,42 @@ export class TasksService {
   ) {
     const comment = await this.taskCommentRepo.findOne({
       where: { id: commentId },
-      relations: { user: true },
+      relations: { user: true, task: { project: true } },
     });
 
     if (!comment) throw new NotFoundException('Comment not found');
 
     comment.body = dto.body;
-
-    return this.taskCommentRepo.save(comment);
+    const savedComment = await this.taskCommentRepo.save(comment);
+    const payload: CommentUpdatedPayload = {
+      projectId: comment.task.project.id,
+      taskId: comment.task.id,
+      comment: mapCommentToApiComment(savedComment),
+    };
+    this.eventEmitter.emit(
+      DOMAIN_EVENTS.COMMENT.UPDATED,
+      new CommentUpdatedEvent(payload),
+    );
+    return savedComment;
   }
 
   async deleteComment(commentId: string, userId: string) {
     const comment = await this.taskCommentRepo.findOne({
       where: { id: commentId },
+      relations: { task: { project: true } },
     });
     if (!comment) throw new NotFoundException('Comment not found');
 
     await this.taskCommentRepo.delete({ id: commentId });
+    const payload: CommentDeletedPayload = {
+      projectId: comment.task.project.id,
+      taskId: comment.task.id,
+      commentId: comment.id,
+    };
+    this.eventEmitter.emit(
+      DOMAIN_EVENTS.COMMENT.DELETED,
+      new CommentDeletedEvent(payload),
+    );
   }
 
   // ─── Time Logs ─────────────────────────────────────────────────────────
