@@ -62,8 +62,8 @@ export class Task {
   @Column({ type: 'text', nullable: true })
   description?: string;
 
-  @Column({ type: 'varchar' })
-  label!: string;
+  @Column({ type: 'varchar', nullable: true })
+  label!: string | null;
 
   @Column({ type: 'date', nullable: true })
   deadline!: Date | null;

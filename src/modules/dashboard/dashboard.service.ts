@@ -1,6 +1,10 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Brackets, MoreThan, LessThanOrEqual } from 'typeorm';
+import { Repository, Brackets, MoreThan, LessThanOrEqual, In, And } from 'typeorm';
 import { Task } from '@modules/tasks/entities/task.entity';
 import { Project } from '@modules/projects/entities/project.entity';
 import { ProjectMember } from '@modules/projects/entities/project-member.entity';
@@ -27,7 +31,6 @@ export class DashboardService {
   ) {}
 
   async getDashboardSummary(userId: string) {
-    // 1. Get user projects
     const members = await this.projectMemberRepo.find({
       where: { user: { id: userId } },
       relations: { project: true, role: true },
@@ -36,7 +39,6 @@ export class DashboardService {
 
     const projectIds = members.map((m) => m.project.id);
 
-    // Stats calculations
     let totalProjects = members.length;
     let myTasksCount = 0;
     let completedCount = 0;
@@ -48,15 +50,18 @@ export class DashboardService {
     todayEnd.setHours(23, 59, 59, 999);
 
     if (projectIds.length > 0) {
-      // My Tasks (Assigned to user, non-DONE)
       myTasksCount = await this.taskRepo.count({
         where: {
           assignee: { id: userId },
-          status: TaskStatus.TODO || TaskStatus.IN_PROGRESS || TaskStatus.IN_REVIEW || TaskStatus.BACKLOG,
+          status: In([
+            TaskStatus.TODO,
+            TaskStatus.IN_PROGRESS,
+            TaskStatus.IN_REVIEW,
+            TaskStatus.BACKLOG,
+          ]),
         },
       });
 
-      // Completed Tasks (Assigned to user, status DONE)
       completedCount = await this.taskRepo.count({
         where: {
           assignee: { id: userId },
@@ -64,21 +69,19 @@ export class DashboardService {
         },
       });
 
-      // Due Today Tasks (Assigned to user, status != DONE, deadline is today)
-      dueTodayCount = await this.taskRepo.createQueryBuilder('task')
+      dueTodayCount = await this.taskRepo
+        .createQueryBuilder('task')
         .where('task.assignee_id = :userId', { userId })
         .andWhere('task.status != :done', { done: TaskStatus.DONE })
         .andWhere('task.deadline >= :todayStart', { todayStart })
         .andWhere('task.deadline <= :todayEnd', { todayEnd })
         .getCount();
     }
-
-    // Dynamic Trend calculations
-    // Projects trend: count joined this month (last 30 days)
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const projectsJoinedThisMonth = members.filter((m) => m.joinedAt >= thirtyDaysAgo).length;
+    const projectsJoinedThisMonth = members.filter(
+      (m) => m.joinedAt >= thirtyDaysAgo,
+    ).length;
 
-    // Tasks trend: tasks completed in last 7 days vs previous 7 days
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
     const completedLastWeek = await this.taskRepo.count({
@@ -92,14 +95,16 @@ export class DashboardService {
       where: {
         assignee: { id: userId },
         status: TaskStatus.DONE,
-        updatedAt: MoreThan(fourteenDaysAgo) && LessThanOrEqual(sevenDaysAgo), // Note logic handling
+        updatedAt: And(MoreThan(fourteenDaysAgo), LessThanOrEqual(sevenDaysAgo)),
       },
     });
 
     let completedTrendDirection: 'up' | 'down' | 'neutral' = 'neutral';
     let completedTrendLabel = '0% from last week';
     if (completedPrevWeek > 0) {
-      const pct = Math.round(((completedLastWeek - completedPrevWeek) / completedPrevWeek) * 100);
+      const pct = Math.round(
+        ((completedLastWeek - completedPrevWeek) / completedPrevWeek) * 100,
+      );
       if (pct > 0) {
         completedTrendDirection = 'up';
         completedTrendLabel = `${pct}% from last week`;
@@ -112,10 +117,10 @@ export class DashboardService {
       completedTrendLabel = `+${completedLastWeek} from last week`;
     }
 
-    // Due today trend: count due today vs due yesterday
     const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000);
     const yesterdayEnd = new Date(todayEnd.getTime() - 24 * 60 * 60 * 1000);
-    const dueYesterdayCount = await this.taskRepo.createQueryBuilder('task')
+    const dueYesterdayCount = await this.taskRepo
+      .createQueryBuilder('task')
       .where('task.assignee_id = :userId', { userId })
       .andWhere('task.status != :done', { done: TaskStatus.DONE })
       .andWhere('task.deadline >= :yesterdayStart', { yesterdayStart })
@@ -140,7 +145,10 @@ export class DashboardService {
         value: totalProjects,
         icon: 'folder' as const,
         trend: {
-          direction: projectsJoinedThisMonth > 0 ? ('up' as const) : ('neutral' as const),
+          direction:
+            projectsJoinedThisMonth > 0
+              ? ('up' as const)
+              : ('neutral' as const),
           label: `${projectsJoinedThisMonth} this month`,
         },
       },
@@ -176,10 +184,18 @@ export class DashboardService {
       },
     ];
 
-    // Upcoming Deadlines (assigned, non-done, future deadlines)
-    let upcomingDeadlines: any[] = [];
+    let upcomingDeadlines: {
+      id: string;
+      taskId: string;
+      title: string;
+      projectId: string;
+      projectName: string;
+      dueDate: string;
+      priority: string;
+    }[] = [];
     if (projectIds.length > 0) {
-      const tasks = await this.taskRepo.createQueryBuilder('task')
+      const tasks = await this.taskRepo
+        .createQueryBuilder('task')
         .leftJoinAndSelect('task.project', 'project')
         .where('task.assignee_id = :userId', { userId })
         .andWhere('task.status != :done', { done: TaskStatus.DONE })
@@ -194,15 +210,21 @@ export class DashboardService {
         title: t.title,
         projectId: t.project.id,
         projectName: t.project.name,
-        dueDate: t.deadline ? t.deadline.toISOString() : '',
+        dueDate: t.deadline ? new Date(t.deadline).toISOString() : '',
         priority: t.priority,
       }));
     }
 
-    // Recent Activity (logs from user's projects)
-    let recentActivity: any[] = [];
+    let recentActivity: {
+      id: string;
+      actor: { id: string; name: string; avatar: string };
+      message: string;
+      projectName: string;
+      createdAt: string;
+    }[] = [];
     if (projectIds.length > 0) {
-      const logs = await this.activityLogRepo.createQueryBuilder('log')
+      const logs = await this.activityLogRepo
+        .createQueryBuilder('log')
         .leftJoinAndSelect('log.actor', 'actor')
         .leftJoin('log.project', 'project')
         .where('project.id IN (:...projectIds)', { projectIds })
@@ -223,27 +245,51 @@ export class DashboardService {
       }));
     }
 
-    // Recent Projects (up to 4 projects sorted by updated_at DESC)
-    const recentProjects: any[] = [];
     const topMembers = members.slice(0, 4);
+    const topProjectIds = topMembers.map((m) => m.project.id);
 
-    for (const m of topMembers) {
-      const totalProjTasks = await this.taskRepo.count({
-        where: { project: { id: m.project.id } },
-      });
-      const completedProjTasks = await this.taskRepo.count({
-        where: { project: { id: m.project.id }, status: TaskStatus.DONE },
-      });
-      const progress = totalProjTasks > 0 ? Math.round((completedProjTasks / totalProjTasks) * 100) : 0;
+    let progressMap = new Map<string, { total: number; completed: number }>();
+    if (topProjectIds.length > 0) {
+      const taskCounts: { projectId: string; total: string; completed: string }[] =
+        await this.taskRepo
+          .createQueryBuilder('task')
+          .select('task.project_id', 'projectId')
+          .addSelect('COUNT(*)::int', 'total')
+          .addSelect(
+            `COUNT(*) FILTER (WHERE task.status = :done)::int`,
+            'completed',
+          )
+          .where('task.project_id IN (:...topProjectIds)', { topProjectIds })
+          .setParameter('done', TaskStatus.DONE)
+          .groupBy('task.project_id')
+          .getRawMany();
 
-      recentProjects.push({
+      for (const row of taskCounts) {
+        progressMap.set(row.projectId, {
+          total: Number(row.total),
+          completed: Number(row.completed),
+        });
+      }
+    }
+
+    const recentProjects = topMembers.map((m) => {
+      const counts = progressMap.get(m.project.id) || {
+        total: 0,
+        completed: 0,
+      };
+      const progress =
+        counts.total > 0
+          ? Math.round((counts.completed / counts.total) * 100)
+          : 0;
+
+      return {
         id: m.project.id,
         name: m.project.name,
-        role: m.role.level >= 80 ? ('ADMIN' as const) : ('MEMBER' as const),
+        role: m.role.name,
         progress,
         color: m.project.color || '#d97706',
-      });
-    }
+      };
+    });
 
     return {
       stats,
@@ -253,9 +299,10 @@ export class DashboardService {
     };
   }
 
-  async getTaskProgress(userId: string, range: 'last_7_days' | 'last_30_days' | 'this_month') {
-    // We only aggregate completed tasks assigned to the user
-    // First, verify range is valid (guarded by DTO but double check)
+  async getTaskProgress(
+    userId: string,
+    range: 'last_7_days' | 'last_30_days' | 'this_month',
+  ) {
     const now = new Date();
 
     if (range === 'last_7_days') {
@@ -263,7 +310,8 @@ export class DashboardService {
       sevenDaysAgo.setDate(now.getDate() - 6);
       sevenDaysAgo.setHours(0, 0, 0, 0);
 
-      const tasks = await this.taskRepo.createQueryBuilder('task')
+      const tasks = await this.taskRepo
+        .createQueryBuilder('task')
         .where('task.assignee_id = :userId', { userId })
         .andWhere('task.status = :status', { status: TaskStatus.DONE })
         .andWhere('task.updated_at >= :since', { since: sevenDaysAgo })
@@ -272,7 +320,6 @@ export class DashboardService {
       const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
       const pointsMap = new Map<string, number>();
 
-      // Generate the last 7 days including today
       for (let i = 0; i < 7; i++) {
         const d = new Date();
         d.setDate(now.getDate() - (6 - i));
@@ -287,10 +334,12 @@ export class DashboardService {
         }
       }
 
-      const points = Array.from(pointsMap.entries()).map(([day, completed]) => ({
-        day,
-        completed,
-      }));
+      const points = Array.from(pointsMap.entries()).map(
+        ([day, completed]) => ({
+          day,
+          completed,
+        }),
+      );
 
       return { range, points };
     }
@@ -300,7 +349,8 @@ export class DashboardService {
       thirtyDaysAgo.setDate(now.getDate() - 29);
       thirtyDaysAgo.setHours(0, 0, 0, 0);
 
-      const tasks = await this.taskRepo.createQueryBuilder('task')
+      const tasks = await this.taskRepo
+        .createQueryBuilder('task')
         .where('task.assignee_id = :userId', { userId })
         .andWhere('task.status = :status', { status: TaskStatus.DONE })
         .andWhere('task.updated_at >= :since', { since: thirtyDaysAgo })
@@ -333,7 +383,8 @@ export class DashboardService {
     if (range === 'this_month') {
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-      const tasks = await this.taskRepo.createQueryBuilder('task')
+      const tasks = await this.taskRepo
+        .createQueryBuilder('task')
         .where('task.assignee_id = :userId', { userId })
         .andWhere('task.status = :status', { status: TaskStatus.DONE })
         .andWhere('task.updated_at >= :since', { since: startOfMonth })
@@ -371,20 +422,26 @@ export class DashboardService {
     const todayEnd = new Date();
     todayEnd.setHours(23, 59, 59, 999);
 
-    const tasks = await this.taskRepo.createQueryBuilder('task')
+    const tasks = await this.taskRepo
+      .createQueryBuilder('task')
       .leftJoinAndSelect('task.project', 'project')
       .where('task.assignee_id = :userId', { userId })
       .andWhere(
         new Brackets((qb) => {
-          qb.where('task.status != :doneStatus AND task.deadline <= :todayEnd', {
-            doneStatus: TaskStatus.DONE,
-            todayEnd,
-          })
-          .orWhere('task.status = :doneStatus AND task.updated_at >= :todayStart', {
-            doneStatus: TaskStatus.DONE,
-            todayStart,
-          });
-        })
+          qb.where(
+            'task.status != :doneStatus AND task.deadline <= :todayEnd',
+            {
+              doneStatus: TaskStatus.DONE,
+              todayEnd,
+            },
+          ).orWhere(
+            'task.status = :doneStatus AND task.updated_at >= :todayStart',
+            {
+              doneStatus: TaskStatus.DONE,
+              todayStart,
+            },
+          );
+        }),
       )
       .orderBy('task.deadline', 'ASC')
       .addOrderBy('task.updated_at', 'DESC')
@@ -419,7 +476,6 @@ export class DashboardService {
       throw new NotFoundException('Task not found');
     }
 
-    // Security check: must be a member of the project
     const member = await this.projectMemberRepo.findOne({
       where: { project: { id: task.project.id }, user: { id: userId } },
       relations: { role: true },
@@ -429,20 +485,23 @@ export class DashboardService {
       throw new ForbiddenException('You do not have access to this project');
     }
 
-    // Permission check: must be the assignee or have update permission
     const isAssignee = task.assignee?.id === userId;
-    const hasUpdatePerm = ProjectAuthEvaluator.hasPermission(member, 'tasks', 'update');
+    const hasUpdatePerm = ProjectAuthEvaluator.hasPermission(
+      member,
+      'tasks',
+      'update',
+    );
 
     if (!isAssignee && !hasUpdatePerm) {
-      throw new ForbiddenException('You do not have permission to update this task');
+      throw new ForbiddenException(
+        'You do not have permission to update this task',
+      );
     }
 
-    // Toggle status
     const oldStatus = task.status;
     task.status = completed ? TaskStatus.DONE : TaskStatus.IN_PROGRESS;
     await this.taskRepo.save(task);
 
-    // Log the activity
     const action = completed ? 'completed' : 'reopened';
     await this.activitiesService.logActivity(
       userId,

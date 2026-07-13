@@ -84,12 +84,21 @@ export class BoardsService {
 
     let sortOrder = dto.sortOrder;
     if (sortOrder === undefined) {
-      const last = await this.boardRepo.findOne({
-        where: { project: { id: projectId } },
-        order: { sortOrder: 'DESC' },
-        select: { sortOrder: true },
+      const result = await this.boardRepo
+        .createQueryBuilder('col')
+        .select('MAX(col.sort_order)', 'max')
+        .where('col.project_id = :projectId', { projectId })
+        .getRawOne<{ max: number | null }>();
+      sortOrder = result?.max != null ? result.max + 1000 : 1000;
+    } else {
+      const duplicate = await this.boardRepo.count({
+        where: { project: { id: projectId }, sortOrder },
       });
-      sortOrder = last ? last.sortOrder + 1000 : 1000;
+      if (duplicate > 0) {
+        throw new ConflictException(
+          `A column with sort order ${sortOrder} already exists in this project. Choose a different value or omit it to auto-assign.`,
+        );
+      }
     }
 
     const column = this.boardRepo.create({
