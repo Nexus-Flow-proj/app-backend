@@ -4,6 +4,10 @@ export const SOCKET_EVENTS = {
     LEAVE: 'project:leave',
   },
 
+  NOTIFICATION: {
+    NEW: 'notification:new',
+  },
+
   PRESENCE: {
     USER_ONLINE: 'presence:user-online',
     USER_OFFLINE: 'presence:user-offline',

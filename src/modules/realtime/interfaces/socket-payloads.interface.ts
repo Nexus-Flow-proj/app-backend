@@ -1,3 +1,5 @@
+import { ApiNotification } from '@modules/notifications/interfaces/api-notification.interface';
+
 export interface ApiUserSummary {
   id: string;
   email: string;
@@ -48,6 +50,10 @@ export interface ApiComment {
 
 export interface PresencePayload {
   userId: string;
+}
+
+export interface NotificationNewPayload {
+  notification: ApiNotification;
 }
 
 export interface ApiSubtask {
