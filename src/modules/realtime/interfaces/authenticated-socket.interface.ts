@@ -6,5 +6,6 @@ export interface AuthenticatedSocket extends Socket {
       id: string;
       email: string;
     };
+    activeProjectId?: string;
   };
 }
