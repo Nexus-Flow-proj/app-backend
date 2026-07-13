@@ -18,6 +18,7 @@ import { CanvasModule } from '@modules/canvas/canvas.module';
 import { ActivitiesModule } from './modules/activities/activities.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { RealtimeModule } from './modules/realtime/realtime.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
     ProjectsModule,
     TasksModule,
     BoardsModule,
+    RealtimeModule,
     CanvasModule,
     ActivitiesModule,
     DashboardModule

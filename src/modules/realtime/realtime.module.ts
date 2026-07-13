@@ -8,9 +8,20 @@ import { RealtimeGateway } from './gateways/realtime.gateway';
 import { RealtimeService } from './services/realtime.service';
 import { ProjectsModule } from '@modules/projects/projects.module';
 import { TaskRealtimeListener } from './listeners/task-realtime.listener';
+import { ColumnRealtimeListener } from './listeners/column-realtime.listener';
+import { CommentRealtimeListener } from './listeners/comment-realtime.listener';
+import { SubtaskRealtimeListener } from './listeners/subtask-realtime.listener';
 
 @Module({
   imports: [AuthModule, ProjectsModule, TypeOrmModule.forFeature([User])],
-  providers: [SocketAuthService, RealtimeGateway, RealtimeService, TaskRealtimeListener],
+  providers: [
+    SocketAuthService,
+    RealtimeGateway,
+    RealtimeService,
+    TaskRealtimeListener,
+    ColumnRealtimeListener,
+    CommentRealtimeListener,
+    SubtaskRealtimeListener,
+  ],
 })
 export class RealtimeModule {}

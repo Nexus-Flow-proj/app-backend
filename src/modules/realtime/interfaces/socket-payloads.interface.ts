@@ -38,6 +38,46 @@ export interface ApiTaskSummary {
   type: string;
 }
 
+export interface ApiComment {
+  id: string;
+  body: string;
+  user: ApiUserSummary;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface ApiSubtask {
+  id: string;
+  title: string;
+  isCompleted: boolean;
+  sortOrder: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ColumnCreatedPayload {
+  projectId: string;
+  column: ApiBoardColumn;
+}
+
+export interface ColumnUpdatedPayload {
+  projectId: string;
+  column: ApiBoardColumn;
+}
+
+export interface ColumnDeletedPayload {
+  projectId: string;
+  columnId: string;
+}
+
+export interface ColumnReorderedPayload {
+  projectId: string;
+  columns: {
+    id: string;
+    sortOrder: number;
+  }[];
+}
+
 export interface TaskCreatedPayload {
   projectId: string;
   task: ApiTaskSummary;
@@ -51,4 +91,40 @@ export interface TaskUpdatedPayload {
 export interface TaskDeletedPayload {
   projectId: string;
   taskId: string;
+}
+
+export interface CommentCreatedPayload {
+  projectId: string;
+  taskId: string;
+  comment: ApiComment;
+}
+
+export interface CommentUpdatedPayload {
+  projectId: string;
+  taskId: string;
+  comment: ApiComment;
+}
+
+export interface CommentDeletedPayload {
+  projectId: string;
+  taskId: string;
+  commentId: string;
+}
+
+export interface SubtaskCreatedPayload {
+  projectId: string;
+  taskId: string;
+  subtask: ApiSubtask;
+}
+
+export interface SubtaskUpdatedPayload {
+  projectId: string;
+  taskId: string;
+  subtask: ApiSubtask;
+}
+
+export interface SubtaskDeletedPayload {
+  projectId: string;
+  taskId: string;
+  subtaskId: string;
 }
