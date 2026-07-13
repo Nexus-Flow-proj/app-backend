@@ -12,6 +12,7 @@ import { ColumnRealtimeListener } from './listeners/column-realtime.listener';
 import { CommentRealtimeListener } from './listeners/comment-realtime.listener';
 import { SubtaskRealtimeListener } from './listeners/subtask-realtime.listener';
 import { PresenceTrackerService } from './services/presence-tracker.service';
+import { NotificationRealtimeListener } from './listeners/notification-realtime.listener';
 
 @Module({
   imports: [AuthModule, ProjectsModule, TypeOrmModule.forFeature([User])],
@@ -24,6 +25,7 @@ import { PresenceTrackerService } from './services/presence-tracker.service';
     CommentRealtimeListener,
     SubtaskRealtimeListener,
     PresenceTrackerService,
+    NotificationRealtimeListener,
   ],
 })
 export class RealtimeModule {}
