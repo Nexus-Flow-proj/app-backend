@@ -18,6 +18,7 @@ import { RealtimeService } from '../services/realtime.service';
 import { ProjectsService } from '@modules/projects/projects.service';
 import { ProjectRoomDto } from '../dtos/project-room.dto';
 import { SOCKET_EVENTS } from '../constants/socket-events';
+import { PresenceTrackerService } from '../services/presence-tracker.service';
 
 @WebSocketGateway({
   cors: {
@@ -37,6 +38,7 @@ export class RealtimeGateway
     private readonly socketAuthService: SocketAuthService,
     private readonly realtimeService: RealtimeService,
     private readonly projectsService: ProjectsService,
+    private readonly presenceTrackerService: PresenceTrackerService,
   ) {}
 
   afterInit() {
@@ -52,6 +54,7 @@ export class RealtimeGateway
 
       const authenticatedClient = client as AuthenticatedSocket;
       authenticatedClient.data.user = user;
+      authenticatedClient.data.activeProjectId = undefined;
 
       const userRoom = SOCKET_ROOMS.user(user.id);
       await authenticatedClient.join(userRoom);
@@ -71,6 +74,26 @@ export class RealtimeGateway
   }
 
   handleDisconnect(client: Socket) {
+    const authenticatedClient = client as AuthenticatedSocket;
+    const userId = authenticatedClient.data.user?.id;
+    const activeProjectId = authenticatedClient.data.activeProjectId;
+
+    if (userId && activeProjectId) {
+      const { userId: trackedUserId, wasLastForProject } =
+        this.presenceTrackerService.removeSocket(client.id, activeProjectId);
+
+      if (trackedUserId && wasLastForProject) {
+        this.realtimeService.emitToProject(
+          activeProjectId,
+          SOCKET_EVENTS.PRESENCE.USER_OFFLINE,
+          { userId: trackedUserId },
+        );
+      }
+    } else {
+      this.presenceTrackerService.clearSocket(client.id);
+    }
+
+    authenticatedClient.data.activeProjectId = undefined;
     this.logger.log(`Socket disconnected: socketId=${client.id}`);
   }
 
@@ -92,8 +115,46 @@ export class RealtimeGateway
 
       await this.projectsService.getProjectMember(payload.projectId, user.id);
 
+      const activeProjectId = client.data.activeProjectId;
+      if (activeProjectId === payload.projectId) {
+        return { success: true };
+      }
+
+      if (activeProjectId && activeProjectId !== payload.projectId) {
+        const previousProjectId = activeProjectId;
+        const previousProjectRoom = SOCKET_ROOMS.project(previousProjectId);
+        const { userId: trackedUserId, wasLastForProject } =
+          this.presenceTrackerService.removeSocket(client.id, previousProjectId);
+
+        if (trackedUserId && wasLastForProject) {
+          this.realtimeService.emitToProject(
+            previousProjectId,
+            SOCKET_EVENTS.PRESENCE.USER_OFFLINE,
+            { userId: trackedUserId },
+          );
+        }
+
+        await client.leave(previousProjectRoom);
+        client.data.activeProjectId = undefined;
+      }
+
       const projectRoom = SOCKET_ROOMS.project(payload.projectId);
       await client.join(projectRoom);
+
+      const { isFirstForProject } = this.presenceTrackerService.addSocket(
+        client.id,
+        user.id,
+        payload.projectId,
+      );
+      client.data.activeProjectId = payload.projectId;
+
+      if (isFirstForProject) {
+        this.realtimeService.emitToProject(
+          payload.projectId,
+          SOCKET_EVENTS.PRESENCE.USER_ONLINE,
+          { userId: user.id },
+        );
+      }
 
       this.logger.log(
         `User joined project room: socketId=${client.id}, userId=${user.id}, room=${projectRoom}`,
@@ -131,8 +192,27 @@ export class RealtimeGateway
       };
     }
 
+    if (client.data.activeProjectId !== payload.projectId) {
+      return { success: true };
+    }
+
+    const { userId, wasLastForProject } = this.presenceTrackerService.removeSocket(
+      client.id,
+      payload.projectId,
+    );
+
     const projectRoom = SOCKET_ROOMS.project(payload.projectId);
     await client.leave(projectRoom);
+
+    client.data.activeProjectId = undefined;
+
+    if (userId && wasLastForProject) {
+      this.realtimeService.emitToProject(
+        payload.projectId,
+        SOCKET_EVENTS.PRESENCE.USER_OFFLINE,
+        { userId },
+      );
+    }
 
     this.logger.log(
       `User left project room: socketId=${client.id}, userId=${user.id}, room=${projectRoom}`,

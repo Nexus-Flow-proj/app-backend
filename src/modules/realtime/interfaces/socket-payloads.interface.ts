@@ -46,6 +46,10 @@ export interface ApiComment {
   updated_at?: string;
 }
 
+export interface PresencePayload {
+  userId: string;
+}
+
 export interface ApiSubtask {
   id: string;
   title: string;
