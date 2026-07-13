@@ -34,9 +34,7 @@ export class BoardsController {
   @Get('projects/:projectId/boards')
   @RequirePermission('board', 'read')
   @Serialize(BoardColumnResponseDto)
-  async listColumns(
-    @Param('projectId') projectId: string,
-  ) {
+  async listColumns(@Param('projectId') projectId: string) {
     const data = await this.boardsService.listColumns(projectId);
     return { message: 'Board columns retrieved successfully.', data };
   }
@@ -83,7 +81,7 @@ export class BoardsController {
   @HttpCode(HttpStatus.OK)
   async deleteColumn(@Param('id') id: string, @CurrentUser() user: User) {
     await this.boardsService.deleteColumn(id, user.id);
-    return { message: 'Board column deleted successfully.' };
+    return { message: 'Board column deleted successfully.', data: null };
   }
 
   // ─── Reorder Columns ───────────────────────────────────
