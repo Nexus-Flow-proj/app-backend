@@ -909,15 +909,41 @@ export class ProjectsService {
     return this.toMemberView(savedMember);
   }
 
-  async removeMember(projectId: string, memberId: string): Promise<void> {
+  async removeMember(
+    projectId: string,
+    memberId: string,
+    actorId: string,
+  ): Promise<void> {
     const member = await this.projectMemberRepo.findOne({
       where: { id: memberId, project: { id: projectId } },
+      relations: { user: true, project: true },
     });
     if (!member) {
       throw new NotFoundException('Project member not found');
     }
 
+    const recipientId = member.user.id;
+    const projectName = member.project.name;
+
     await this.projectMemberRepo.delete(member.id);
+
+    try {
+      await this.notificationsService.create({
+        recipientId,
+        actorId,
+        type: NotificationType.REMOVED_FROM_PROJECT,
+        title: 'Removed from project',
+        message: `You were removed from project: ${projectName}`,
+        projectId,
+        resourceType: 'PROJECT',
+        resourceId: projectId,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to create REMOVED_FROM_PROJECT notification for projectId=${projectId}, memberId=${memberId}, recipientId=${recipientId}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+    }
   }
 
   private async loadProjectOrFail(projectId: string): Promise<Project> {

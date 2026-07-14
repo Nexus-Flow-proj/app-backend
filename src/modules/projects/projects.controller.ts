@@ -228,8 +228,13 @@ export class ProjectsController {
   async removeMember(
     @Param('projectId') projectId: string,
     @Param('memberId') memberId: string,
+    @CurrentUser() currentUser: User,
   ): Promise<any> {
-    await this.projectsService.removeMember(projectId, memberId);
+    await this.projectsService.removeMember(
+      projectId,
+      memberId,
+      currentUser.id,
+    );
     return { message: 'Member removed successfully.' };
   }
 
