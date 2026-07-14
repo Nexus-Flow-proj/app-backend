@@ -5,6 +5,7 @@ import {
   Injectable,
   NotFoundException,
   UnauthorizedException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Project } from './entities/project.entity';
@@ -36,6 +37,8 @@ import {
 } from './dtos/role.dto';
 import { ProjectAuthEvaluator } from './utils/project-auth.evaluator';
 import { ActivitiesService } from '@modules/activities/activities.service';
+import { NotificationsService } from '@modules/notifications/notifications.service';
+import { NotificationType } from '@modules/notifications/enums/notification-type.enum';
 
 export const DEFAULT_ROLE_PRESETS = [
   {
@@ -172,6 +175,8 @@ export const DEFAULT_ROLE_PRESETS = [
 
 @Injectable()
 export class ProjectsService {
+  private readonly logger = new Logger(ProjectsService.name);
+
   constructor(
     @InjectRepository(Project) private projectRepo: Repository<Project>,
     @InjectRepository(ProjectMember)
@@ -183,7 +188,71 @@ export class ProjectsService {
     private mailService: MailService,
     private configService: ConfigService,
     private activitiesService: ActivitiesService,
+    private readonly notificationsService: NotificationsService,
   ) {}
+
+  private async createInviteReceivedNotification(
+    inviteId: string,
+    projectId: string,
+    projectName: string,
+    recipientId: string,
+    actorId: string,
+    inviterName: string,
+    inviteeName: string,
+  ): Promise<void> {
+    if (recipientId === actorId) {
+      return;
+    }
+
+    try {
+      await this.notificationsService.create({
+        recipientId,
+        actorId,
+        type: NotificationType.INVITE_RECEIVED,
+        title: `You're invited to ${projectName}`,
+        message: `${inviterName} invited ${inviteeName} to ${projectName}`,
+        projectId,
+        resourceType: 'INVITATION',
+        resourceId: inviteId,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to create INVITE_RECEIVED notification for inviteId=${inviteId}, recipientId=${recipientId}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+    }
+  }
+
+  private async createInviteAcceptedNotification(
+    inviteId: string,
+    projectId: string,
+    projectName: string,
+    recipientId: string,
+    actorId: string,
+    inviteeName: string,
+  ): Promise<void> {
+    if (recipientId === actorId) {
+      return;
+    }
+
+    try {
+      await this.notificationsService.create({
+        recipientId,
+        actorId,
+        type: NotificationType.INVITE_ACCEPTED,
+        title: `${inviteeName} accepted your invite`,
+        message: `${inviteeName} accepted the invitation to ${projectName}`,
+        projectId,
+        resourceType: 'INVITATION',
+        resourceId: inviteId,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to create INVITE_ACCEPTED notification for inviteId=${inviteId}, recipientId=${recipientId}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+    }
+  }
 
   async create(body: CreateProjectDto, userId: string): Promise<ProjectDto> {
     const owner = await this.userRepo.findOne({ where: { id: userId } });
@@ -398,10 +467,30 @@ export class ProjectsService {
 
     const savedInvite = await this.inviteRepo.save(invite);
 
+    const invitedUser = await this.userRepo.findOne({
+      where: { email: normalizedEmail },
+      select: { id: true, firstName: true, lastName: true },
+    });
+
     const inviterName = [actor.user?.firstName, actor.user?.lastName]
       .filter(Boolean)
       .join(' ')
       .trim();
+    const inviteeName = invitedUser
+      ? [invitedUser.firstName, invitedUser.lastName].filter(Boolean).join(' ').trim()
+      : normalizedEmail;
+
+    if (invitedUser) {
+      await this.createInviteReceivedNotification(
+        savedInvite.id,
+        savedInvite.project.id,
+        savedInvite.project.name,
+        invitedUser.id,
+        actor.user.id,
+        inviterName || 'A project member',
+        inviteeName || normalizedEmail,
+      );
+    }
 
     const frontendUrl = this.configService.get<string>('env.frontendUrl');
     const inviteLink = `${frontendUrl}/project/invitation/${token}`;
@@ -509,6 +598,15 @@ export class ProjectsService {
     if (existingMember) {
       invite.status = InviteStatus.ACCEPTED;
       await this.inviteRepo.save(invite);
+      await this.createInviteAcceptedNotification(
+        invite.id,
+        invite.project.id,
+        invite.project.name,
+        invite.invitedBy.id,
+        user.id,
+        [user.firstName, user.lastName].filter(Boolean).join(' ').trim() ||
+          user.email,
+      );
       return this.toMemberView(existingMember);
     }
 
@@ -521,6 +619,15 @@ export class ProjectsService {
 
     invite.status = InviteStatus.ACCEPTED;
     await this.inviteRepo.save(invite);
+    await this.createInviteAcceptedNotification(
+      invite.id,
+      invite.project.id,
+      invite.project.name,
+      invite.invitedBy.id,
+      user.id,
+      [user.firstName, user.lastName].filter(Boolean).join(' ').trim() ||
+        user.email,
+    );
 
     const hydratedMember = await this.projectMemberRepo.findOne({
       where: { id: savedMember.id },
