@@ -467,7 +467,7 @@ export class TasksService {
     const savedTask = await this.taskRepo.save(task);
     const newStatus = savedTask.status;
     if (oldStatus !== TaskStatus.DONE && newStatus === TaskStatus.DONE) {
-      const completedRecipientId = savedTask.assignee?.id;
+      const completedRecipientId = savedTask.createdBy?.id;
       if (completedRecipientId) {
         await this.createTaskCompletedNotification(
           savedTask.id,
