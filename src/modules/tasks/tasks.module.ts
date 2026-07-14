@@ -12,6 +12,7 @@ import { User } from '@modules/users/entities/user.entity';
 import { Board } from '@modules/boards/entities/board.entity';
 import { ProjectRole } from '@modules/projects/entities/project-role.entity';
 import { ActivitiesModule } from '@modules/activities/activities.module';
+import { NotificationsModule } from '@modules/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -27,10 +28,10 @@ import { ActivitiesModule } from '@modules/activities/activities.module';
       ProjectRole,
     ]),
     ActivitiesModule,
+    NotificationsModule,
   ],
   controllers: [TasksController],
   providers: [TasksService],
   exports: [TypeOrmModule],
 })
 export class TasksModule {}
-
