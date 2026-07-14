@@ -1,22 +1,78 @@
 import { Notification } from '../entities/notification.entity';
-import { ApiNotification } from '../interfaces/api-notification.interface';
+import {
+  ApiNotification,
+  ApiNotificationActor,
+  ApiNotificationMetadata,
+} from '../interfaces/api-notification.interface';
+
+type NotificationMapperInput = Notification & {
+  actor?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    avatarUrl: string | null;
+  } | null;
+};
+
+function buildActor(
+  actor: NotificationMapperInput['actor'],
+): ApiNotificationActor | undefined {
+  if (!actor) {
+    return undefined;
+  }
+
+  const name = [actor.firstName, actor.lastName].filter(Boolean).join(' ').trim();
+
+  return {
+    id: actor.id,
+    name: name || actor.id,
+    ...(actor.avatarUrl ? { avatar: actor.avatarUrl } : {}),
+  };
+}
+
+function buildMetadata(
+  notification: Notification,
+): ApiNotificationMetadata | undefined {
+  const metadata: ApiNotificationMetadata = {};
+
+  if (notification.projectId) {
+    metadata.projectId = notification.projectId;
+  }
+
+  switch (notification.resourceType?.toUpperCase()) {
+    case 'TASK':
+      if (notification.resourceId) metadata.taskId = notification.resourceId;
+      break;
+    case 'COMMENT':
+      if (notification.resourceId) metadata.commentId = notification.resourceId;
+      break;
+    case 'INVITATION':
+      if (notification.resourceId) {
+        metadata.invitationId = notification.resourceId;
+      }
+      break;
+    default:
+      break;
+  }
+
+  return Object.keys(metadata).length > 0 ? metadata : undefined;
+}
 
 export function mapNotificationToApiNotification(
-  notification: Notification,
+  notification: NotificationMapperInput,
 ): ApiNotification {
+  const actor = buildActor(notification.actor);
+  const metadata = buildMetadata(notification);
+
   return {
     id: notification.id,
-    recipientId: notification.recipientId,
-    actorId: notification.actorId,
+    userId: notification.recipientId,
     type: notification.type,
     title: notification.title,
     message: notification.message,
-    projectId: notification.projectId,
-    resourceType: notification.resourceType,
-    resourceId: notification.resourceId,
+    ...(actor ? { actor } : {}),
+    ...(metadata ? { metadata } : {}),
     isRead: notification.isRead,
-    readAt: notification.readAt ? notification.readAt.toISOString() : null,
     createdAt: notification.createdAt.toISOString(),
-    updatedAt: notification.updatedAt.toISOString(),
   };
 }
