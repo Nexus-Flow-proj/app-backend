@@ -14,6 +14,7 @@ import { SubTask } from '../tasks/entities/subtask.entity';
 import { TaskComment } from '../tasks/entities/task-comment.entity';
 import { TimeLog } from '../tasks/entities/time-log.entity';
 import { ActivitiesModule } from '@modules/activities/activities.module';
+import { NotificationsModule } from '@modules/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { ActivitiesModule } from '@modules/activities/activities.module';
     ]),
     MailModule,
     ActivitiesModule,
+    NotificationsModule,
   ],
   providers: [ProjectsService],
   controllers: [ProjectsController],

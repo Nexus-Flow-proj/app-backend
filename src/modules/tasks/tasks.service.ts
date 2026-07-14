@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -47,9 +48,13 @@ import { mapSubtaskToApiSubtask } from '@modules/realtime/mappers/subtask-socket
 import { SubtaskCreatedEvent } from '@modules/realtime/domain-events/subtask-created.event';
 import { SubtaskUpdatedEvent } from '@modules/realtime/domain-events/subtask-updated.event';
 import { SubtaskDeletedEvent } from '@modules/realtime/domain-events/subtask-deleted.event';
+import { NotificationsService } from '@modules/notifications/notifications.service';
+import { NotificationType } from '@modules/notifications/enums/notification-type.enum';
 
 @Injectable()
 export class TasksService {
+  private readonly logger = new Logger(TasksService.name);
+
   constructor(
     @InjectRepository(Task) private taskRepo: Repository<Task>,
     @InjectRepository(User) private userRepo: Repository<User>,
@@ -61,6 +66,7 @@ export class TasksService {
     private taskCommentRepo: Repository<TaskComment>,
     @InjectRepository(Board) private boardRepo: Repository<Board>,
     private activitiesService: ActivitiesService,
+    private readonly notificationsService: NotificationsService,
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
@@ -106,6 +112,127 @@ export class TasksService {
     });
     if (!task) throw new NotFoundException('Task not found');
     return task;
+  }
+
+  private async createTaskAssignedNotification(
+    taskId: string,
+    taskTitle: string,
+    projectId: string,
+    recipientId: string,
+    actorId: string,
+  ): Promise<void> {
+    if (recipientId === actorId) {
+      return;
+    }
+
+    try {
+      await this.notificationsService.create({
+        recipientId,
+        actorId,
+        type: NotificationType.TASK_ASSIGNED,
+        title: 'Task assigned',
+        message: `You were assigned to task: ${taskTitle}`,
+        projectId,
+        resourceType: 'TASK',
+        resourceId: taskId,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to create TASK_ASSIGNED notification for taskId=${taskId}, recipientId=${recipientId}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+    }
+  }
+
+  private async createTaskUnassignedNotification(
+    taskId: string,
+    taskTitle: string,
+    projectId: string,
+    recipientId: string,
+    actorId: string,
+  ): Promise<void> {
+    if (recipientId === actorId) {
+      return;
+    }
+
+    try {
+      await this.notificationsService.create({
+        recipientId,
+        actorId,
+        type: NotificationType.TASK_UNASSIGNED,
+        title: 'Task unassigned',
+        message: `You were unassigned from task: ${taskTitle}`,
+        projectId,
+        resourceType: 'TASK',
+        resourceId: taskId,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to create TASK_UNASSIGNED notification for taskId=${taskId}, recipientId=${recipientId}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+    }
+  }
+
+  private async createTaskCompletedNotification(
+    taskId: string,
+    taskTitle: string,
+    projectId: string,
+    recipientId: string,
+    actorId: string,
+  ): Promise<void> {
+    if (recipientId === actorId) {
+      return;
+    }
+
+    try {
+      await this.notificationsService.create({
+        recipientId,
+        actorId,
+        type: NotificationType.TASK_COMPLETED,
+        title: 'Task completed',
+        message: `Task completed: ${taskTitle}`,
+        projectId,
+        resourceType: 'TASK',
+        resourceId: taskId,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to create TASK_COMPLETED notification for taskId=${taskId}, recipientId=${recipientId}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+    }
+  }
+
+  private async createCommentAddedNotification(
+    taskId: string,
+    taskTitle: string,
+    commentId: string,
+    projectId: string,
+    recipientId: string,
+    actorId: string,
+  ): Promise<void> {
+    if (recipientId === actorId) {
+      return;
+    }
+
+    try {
+      await this.notificationsService.create({
+        recipientId,
+        actorId,
+        type: NotificationType.COMMENT_ADDED,
+        title: 'New comment added',
+        message: `New comment on task: ${taskTitle}`,
+        projectId,
+        resourceType: 'COMMENT',
+        resourceId: commentId,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to create COMMENT_ADDED notification for taskId=${taskId}, recipientId=${recipientId}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+    }
   }
 
   // ─── Tasks ─────────────────────────────────────────────────────────────
@@ -168,6 +295,7 @@ export class TasksService {
     const { assigneeId, assignee: assigneeInput, ...scalarFields } = dto;
     const resolvedAssigneeId =
       assigneeInput !== undefined ? assigneeInput : assigneeId;
+    const creatorId = userId;
 
     const [currentUser, assignee, boardColumn] = await Promise.all([
       this.userRepo.findOne({
@@ -218,6 +346,15 @@ export class TasksService {
     });
 
     const savedTask = await this.taskRepo.save(task);
+    if (assignee && assignee.id !== creatorId) {
+      await this.createTaskAssignedNotification(
+        savedTask.id,
+        savedTask.title,
+        projectId,
+        assignee.id,
+        creatorId,
+      );
+    }
     await this.activitiesService.logActivity(
       userId,
       projectId,
@@ -283,6 +420,7 @@ export class TasksService {
     });
 
     if (!task) throw new NotFoundException('Task not found');
+    const oldAssigneeId = task.assignee?.id ?? null;
 
     const {
       assigneeId,
@@ -327,6 +465,54 @@ export class TasksService {
     Object.assign(task, scalarFields);
 
     const savedTask = await this.taskRepo.save(task);
+    const newStatus = savedTask.status;
+    if (oldStatus !== TaskStatus.DONE && newStatus === TaskStatus.DONE) {
+      const completedRecipientId = savedTask.createdBy?.id;
+      if (completedRecipientId) {
+        await this.createTaskCompletedNotification(
+          savedTask.id,
+          savedTask.title,
+          savedTask.project.id,
+          completedRecipientId,
+          userId,
+        );
+      }
+    }
+    const newAssigneeId = savedTask.assignee?.id ?? null;
+    if (oldAssigneeId !== newAssigneeId) {
+      if (oldAssigneeId && !newAssigneeId) {
+        await this.createTaskUnassignedNotification(
+          savedTask.id,
+          savedTask.title,
+          savedTask.project.id,
+          oldAssigneeId,
+          userId,
+        );
+      } else if (!oldAssigneeId && newAssigneeId) {
+        await this.createTaskAssignedNotification(
+          savedTask.id,
+          savedTask.title,
+          savedTask.project.id,
+          newAssigneeId,
+          userId,
+        );
+      } else if (oldAssigneeId && newAssigneeId && oldAssigneeId !== newAssigneeId) {
+        await this.createTaskUnassignedNotification(
+          savedTask.id,
+          savedTask.title,
+          savedTask.project.id,
+          oldAssigneeId,
+          userId,
+        );
+        await this.createTaskAssignedNotification(
+          savedTask.id,
+          savedTask.title,
+          savedTask.project.id,
+          newAssigneeId,
+          userId,
+        );
+      }
+    }
     let message = `updated task: ${savedTask.title}`;
     if (dto.status && dto.status !== oldStatus) {
       const action =
@@ -468,7 +654,7 @@ export class TasksService {
   async createComment(taskId: string, dto: CreateCommentDto, userId: string) {
     const task = await this.taskRepo.findOne({
       where: { id: taskId },
-      relations: { project: true },
+      relations: { project: true, assignee: true },
     });
     if (!task) throw new NotFoundException('Task not found');
 
@@ -491,6 +677,16 @@ export class TasksService {
     });
 
     const savedComment = await this.taskCommentRepo.save(comment);
+    if (task.assignee?.id) {
+      await this.createCommentAddedNotification(
+        task.id,
+        task.title,
+        savedComment.id,
+        task.project.id,
+        task.assignee.id,
+        userId,
+      );
+    }
     await this.activitiesService.logActivity(
       userId,
       task.project.id,
