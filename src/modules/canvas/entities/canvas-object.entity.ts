@@ -10,6 +10,7 @@ import {
 import { Canvas } from './canvas.entity';
 import { CanvasObjectType } from '../enums/canvas-object-type.enum';
 import { Task } from '@modules/tasks/entities/task.entity';
+import { Board } from '@modules/boards/entities/board.entity';
 
 @Entity('canvas_objects')
 export class CanvasObject {
@@ -29,6 +30,9 @@ export class CanvasObject {
   @ManyToOne(() => Task, { onDelete: 'SET NULL', nullable: true })
   @JoinColumn({ name: 'task_id' })
   task!: Task | null;
+
+  @Column({ type: 'float', default: 0 })
+  rotation!: number;
 
   @Column({
     type: 'enum',
@@ -50,6 +54,13 @@ export class CanvasObject {
 
   @Column({ name: 'z_index', type: 'int', default: 0 })
   zIndex!: number;
+
+  @Column({ name: 'board_column_id', type: 'uuid', nullable: true })
+  boardColumnId!: string | null;
+
+  @ManyToOne(() => Board, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'board_column_id' })
+  boardColumn!: Board | null;
 
   @Column({ type: 'jsonb', nullable: true })
   data!: Record<string, unknown> | null;
