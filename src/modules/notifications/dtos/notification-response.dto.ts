@@ -73,12 +73,20 @@ export class NotificationsPaginationDto {
 export class NotificationsListResponseDto {
   @Expose()
   @Type(() => NotificationResponseDto)
-  items!: NotificationResponseDto[];
+  notifications!: NotificationResponseDto[];
 
   @Expose()
   unreadCount!: number;
 
   @Expose()
-  @Type(() => NotificationsPaginationDto)
-  pagination!: NotificationsPaginationDto;
+  page!: number;
+
+  @Expose()
+  limit!: number;
+
+  @Expose()
+  total!: number;
+
+  @Expose()
+  totalPages!: number;
 }
