@@ -38,7 +38,17 @@ export class NotificationsController {
       limit,
     );
 
-    return { message: 'Notifications retrieved successfully.', data };
+    return {
+      message: 'Notifications retrieved successfully.',
+      data: {
+        notifications: data.items,
+        unreadCount: data.unreadCount,
+        page: data.pagination.page,
+        limit: data.pagination.limit,
+        total: data.pagination.total,
+        totalPages: data.pagination.totalPages,
+      },
+    };
   }
 
   @Patch('read-all')
