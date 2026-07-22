@@ -1,57 +1,18 @@
 import {
   IsArray,
-  IsEnum,
   IsNotEmpty,
   IsOptional,
   IsString,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { OnboardingProjectInfoDto } from '../../projects/dtos/save-onboarding-draft.dto';
+import {
+  OnboardingProjectInfoDto,
+  ConstraintsDto,
+  ProjectCategory,
+} from '../../projects/dtos/save-onboarding-draft.dto';
 
-export enum ProjectCategory {
-  PROGRAMMING = 'programming',
-  MARKETING = 'marketing',
-  DESIGN = 'design',
-  GENERAL = 'general',
-}
-
-export class ConstraintsDto {
-  @IsOptional()
-  @IsEnum(ProjectCategory)
-  category?: ProjectCategory;
-
-  // Programming options
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  targetStack?: string[];
-
-  @IsOptional()
-  @IsString()
-  preferredLanguage?: string;
-
-  // Marketing options
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  marketingChannels?: string[];
-
-  @IsOptional()
-  @IsString()
-  targetAudience?: string;
-
-  // Design options
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  designDeliverables?: string[];
-
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  designTools?: string[];
-}
+export { ConstraintsDto, ProjectCategory };
 
 export class GenerateOnboardingPlanDto {
   @IsString()
@@ -64,11 +25,6 @@ export class GenerateOnboardingPlanDto {
 
   @IsOptional()
   currentWorkshopState?: Record<string, unknown>;
-
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => ConstraintsDto)
-  constraints?: ConstraintsDto;
 }
 
 export class ChatMessageDto {

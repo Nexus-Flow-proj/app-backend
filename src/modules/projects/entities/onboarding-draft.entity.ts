@@ -27,6 +27,8 @@ export class OnboardingDraft {
     name: string;
     description?: string;
     color: string;
+    estimatedTime?: string;
+    constraints?: Record<string, any>;
   };
 
   @Column({ name: 'workshop_state', type: 'jsonb', nullable: true })

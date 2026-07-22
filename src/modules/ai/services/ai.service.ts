@@ -34,7 +34,6 @@ export class AIService {
       model: this.geminiService.getModelName(),
       inputSnapshot: {
         projectInfo: dto.projectInfo,
-        constraints: dto.constraints,
       },
     });
 
@@ -79,7 +78,7 @@ export class AIService {
       const prompt = `Decompose this product idea: "${dto.prompt}".
 Project Info: Name: "${dto.projectInfo.name}", Description: "${dto.projectInfo.description || ''}".
 Existing Workshop state context if any: ${JSON.stringify(dto.currentWorkshopState || {})}.
-Constraints target stack: ${JSON.stringify(dto.constraints || {})}.`;
+Constraints target stack: ${JSON.stringify(dto.projectInfo.constraints || {})}.`;
 
       const responseSchema = this.geminiService.getOnboardingSchema();
 
