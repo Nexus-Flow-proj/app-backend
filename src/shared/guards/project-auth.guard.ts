@@ -197,6 +197,65 @@ export class ProjectAuthGuard implements CanActivate {
       }
     }
 
+    // --- Task resource hierarchy check ---
+    if (params.id && request.route.path.includes('/tasks/:id')) {
+      if (['PATCH', 'PUT', 'DELETE'].includes(method)) {
+        const task = await this.taskRepo.findOne({
+          where: { id: params.id, project: { id: projectId } },
+          relations: { createdBy: true },
+        });
+        if (!task) {
+          throw new NotFoundException('Task not found');
+        }
+        if (task.createdBy) {
+          const creatorLevel = await this.getCreatorRoleLevel(
+            projectId,
+            task.createdBy.id,
+          );
+          const canModify = ProjectAuthEvaluator.canModifyResource(
+            actor,
+            task.createdBy.id,
+            creatorLevel,
+          );
+          if (!canModify) {
+            throw new ForbiddenException(
+              'You cannot modify or delete resources created by someone with an equal or higher role level',
+            );
+          }
+        }
+      }
+    }
+
+    // --- Subtask resource hierarchy check ---
+    if (params.sid && request.route.path.includes('/subtasks/:sid')) {
+      if (['PATCH', 'PUT', 'DELETE'].includes(method)) {
+        const subtask = await this.subtaskRepo.findOne({
+          where: { id: params.sid },
+          relations: { task: { createdBy: true } },
+        });
+        if (!subtask) {
+          throw new NotFoundException('Subtask not found');
+        }
+        if (subtask.task?.createdBy) {
+          const creatorLevel = await this.getCreatorRoleLevel(
+            projectId,
+            subtask.task.createdBy.id,
+          );
+          const canModify = ProjectAuthEvaluator.canModifyResource(
+            actor,
+            subtask.task.createdBy.id,
+            creatorLevel,
+          );
+          if (!canModify) {
+            throw new ForbiddenException(
+              'You cannot modify or delete subtasks created by someone with an equal or higher role level',
+            );
+          }
+        }
+      }
+    }
+
+    // --- Comment resource hierarchy check ---
     if (params.cid && request.route.path.includes('/comments/:cid')) {
       const comment = await this.taskCommentRepo.findOne({
         where: { id: params.cid },
@@ -206,26 +265,25 @@ export class ProjectAuthGuard implements CanActivate {
         throw new NotFoundException('Comment not found');
       }
 
-      if (method === 'PATCH') {
-        if (comment.user.id !== user.id) {
-          throw new ForbiddenException('You can only modify your own comments');
-        }
-      } else if (method === 'DELETE') {
-        if (comment.user.id !== user.id) {
-          const hasTasksDelete = ProjectAuthEvaluator.hasPermission(
-            actor,
-            'tasks',
-            'delete',
+      if (['PATCH', 'PUT', 'DELETE'].includes(method)) {
+        const creatorLevel = await this.getCreatorRoleLevel(
+          projectId,
+          comment.user.id,
+        );
+        const canModify = ProjectAuthEvaluator.canModifyResource(
+          actor,
+          comment.user.id,
+          creatorLevel,
+        );
+        if (!canModify) {
+          throw new ForbiddenException(
+            'You cannot modify or delete comments created by someone with an equal or higher role level',
           );
-          if (!hasTasksDelete) {
-            throw new ForbiddenException(
-              'You can only delete your own comments unless you have task deletion rights',
-            );
-          }
         }
       }
     }
 
+    // --- Time log resource hierarchy check ---
     if (params.lid && request.route.path.includes('/time-logs/:lid')) {
       const timeLog = await this.timeLogRepo.findOne({
         where: { id: params.lid },
@@ -234,12 +292,37 @@ export class ProjectAuthGuard implements CanActivate {
       if (!timeLog) {
         throw new NotFoundException('Time log not found');
       }
-      if (timeLog.user.id !== user.id) {
-        throw new ForbiddenException('You can only delete your own time logs');
+
+      if (method === 'DELETE') {
+        const creatorLevel = await this.getCreatorRoleLevel(
+          projectId,
+          timeLog.user.id,
+        );
+        const canModify = ProjectAuthEvaluator.canModifyResource(
+          actor,
+          timeLog.user.id,
+          creatorLevel,
+        );
+        if (!canModify) {
+          throw new ForbiddenException(
+            'You cannot delete time logs created by someone with an equal or higher role level',
+          );
+        }
       }
     }
 
     return true;
+  }
+
+  private async getCreatorRoleLevel(
+    projectId: string,
+    userId: string,
+  ): Promise<number | null> {
+    const member = await this.projectMemberRepo.findOne({
+      where: { project: { id: projectId }, user: { id: userId } },
+      relations: { role: true },
+    });
+    return member?.role?.level ?? null;
   }
 
   private async resolveProjectId(request: any): Promise<string | null> {

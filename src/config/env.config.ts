@@ -8,6 +8,8 @@ export interface EnvConfig {
   accessTokenCookieMaxAge: number;
   refreshTokenCookieMaxAge: number;
   csrfTokenCookieMaxAge: number;
+  geminiApiKey: string;
+  openrouterApiKey: string;
 }
 
 export default registerAs('env', () => ({
@@ -28,4 +30,6 @@ export default registerAs('env', () => ({
     process.env.CSRF_TOKEN_COOKIE_MAX_AGE || '3600000',
     10,
   ),
+  geminiApiKey: process.env.GEMINI_API_KEY || '',
+  openrouterApiKey: process.env.OPENROUTER_API_KEY || '',
 }));

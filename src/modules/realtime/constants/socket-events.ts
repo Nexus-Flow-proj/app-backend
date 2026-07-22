@@ -37,4 +37,19 @@ export const SOCKET_EVENTS = {
     UPDATED: 'task:updated',
     DELETED: 'task:deleted'
   },
+
+  AI_GENERATION: {
+    CREATED: 'ai.generation.created',
+    STARTED: 'ai.generation.started',
+    PROGRESS: 'ai.generation.progress',
+    COMPLETED: 'ai.generation.completed',
+    FAILED: 'ai.generation.failed',
+  },
+
+  AI_CHAT: {
+    STARTED: 'ai.chat.started',
+    PROGRESS: 'ai.chat.progress',
+    COMPLETED: 'ai.chat.completed',
+    FAILED: 'ai.chat.failed',
+  },
 } as const;

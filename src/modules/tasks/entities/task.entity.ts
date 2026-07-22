@@ -90,6 +90,12 @@ export class Task {
   @Column({ type: 'jsonb', default: [] })
   attachments: ApiAttachment[];
 
+  @Column({ type: 'jsonb', nullable: true, default: null })
+  metadata!: Record<string, any> | null;
+
+  @Column({ name: 'generation_job_id', type: 'uuid', nullable: true })
+  generationJobId!: string | null;
+
   @OneToMany(() => SubTask, (subtask) => subtask.task)
   subtasks: SubTask[];
 

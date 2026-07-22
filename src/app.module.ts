@@ -20,6 +20,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { AIModule } from './modules/ai/ai.module';
 
 @Module({
   imports: [
@@ -54,7 +55,8 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     NotificationsModule,
     CanvasModule,
     ActivitiesModule,
-    DashboardModule
+    DashboardModule,
+    AIModule,
   ],
   providers: [
     ConfigurableThrottlerGuard,
