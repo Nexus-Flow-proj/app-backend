@@ -37,6 +37,12 @@ export function mapTaskToApiTaskSummary(task: Task): ApiTaskSummary {
         }
       : null,
 
+    dependencies:
+      task.dependencies?.map((dep) => ({
+        id: dep.id,
+        title: dep.title,
+      })) ?? [],
+
     commentsCount: task.comments?.length ?? 0,
     subtasksCount: task.subtasks?.length ?? 0,
     attachmentsCount: task.attachments?.length ?? 0,

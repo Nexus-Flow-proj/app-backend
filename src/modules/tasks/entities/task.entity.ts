@@ -6,6 +6,8 @@ import {
   Entity,
   Index,
   JoinColumn,
+  JoinTable,
+  ManyToMany,
   ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
@@ -36,6 +38,11 @@ export interface ApiAttachment {
   size: number;
   uploadedBy: ApiUserSummary;
   created_at: string;
+}
+
+export interface TaskDependencySummary {
+  id: string;
+  title: string;
 }
 
 @Entity('tasks')
@@ -76,6 +83,14 @@ export class Task {
 
   @Column({ type: 'enum', enum: TaskPriority, default: TaskPriority.MEDIUM })
   priority: TaskPriority;
+
+  @ManyToMany(() => Task)
+  @JoinTable({
+    name: 'task_dependencies',
+    joinColumn: { name: 'task_id', referencedColumnName: 'id' },
+    inverseJoinColumn: { name: 'dependency_id', referencedColumnName: 'id' },
+  })
+  dependencies: Task[];
 
   @ManyToOne(() => Board, { nullable: false, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'board_column_id' })

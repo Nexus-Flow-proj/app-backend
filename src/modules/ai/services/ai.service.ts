@@ -96,17 +96,19 @@ Constraints target stack: ${JSON.stringify(dto.projectInfo.constraints || {})}.`
         },
       );
 
+      const normalizedResult = this.normalizeOnboardingPlan(result, dto);
+
       // Validate output structure and save completed job
       await this.jobRepo.update(generationId, {
         status: AIGenerationStatus.COMPLETED,
-        outputSnapshot: result,
+        outputSnapshot: normalizedResult,
         completedAt: new Date(),
       });
 
       this.realtimeService.emitToUser(userId, 'ai.generation.completed', {
         generationId,
         status: AIGenerationStatus.COMPLETED,
-        output: result,
+        output: normalizedResult,
       });
     } catch (error) {
       const message =
@@ -232,5 +234,99 @@ Provide suggestions matching the JSON schema.`;
       throw new NotFoundException('AI Generation job access denied');
     }
     return job;
+  }
+
+  private normalizeOnboardingPlan(
+    raw: Record<string, any>,
+    dto: GenerateOnboardingPlanDto,
+  ): Record<string, any> {
+    if (!raw || typeof raw !== 'object') {
+      raw = {};
+    }
+
+    const rawFeatures = Array.isArray(raw.features)
+      ? raw.features
+      : Array.isArray(raw.sections)
+        ? raw.sections
+        : [];
+
+    const defaultColors = [
+      '#3b82f6',
+      '#10b981',
+      '#f59e0b',
+      '#8b5cf6',
+      '#ec4899',
+      '#06b6d4',
+    ];
+
+    const normalizedFeatures = rawFeatures.map((feat: any, fIdx: number) => {
+      const featureName =
+        feat.feature_name ||
+        feat.section_name ||
+        feat.title ||
+        feat.name ||
+        `Feature ${fIdx + 1}`;
+
+      const featureDescription =
+        feat.feature_description ||
+        feat.description ||
+        feat.section_description ||
+        feat.rationale ||
+        '';
+
+      const color = feat.color || defaultColors[fIdx % defaultColors.length];
+      const priority = feat.priority || 'MEDIUM';
+
+      const rawTasks = Array.isArray(feat.tasks) ? feat.tasks : [];
+
+      const normalizedTasks = rawTasks.map((t: any, tIdx: number) => {
+        const taskName =
+          t.task_name || t.title || t.name || `Task ${tIdx + 1}`;
+
+        const taskDescription =
+          t.task_description || t.description || t.details || '';
+
+        return {
+          task_name: taskName,
+          task_description: taskDescription,
+          priority: t.priority || 'MEDIUM',
+          type: t.type || 'FEATURE',
+          status: t.status || 'not_started',
+          assigned_to: t.assigned_to ?? null,
+          acceptanceCriteria: Array.isArray(t.acceptanceCriteria)
+            ? t.acceptanceCriteria
+            : [],
+          estimatedComplexity: t.estimatedComplexity || 'M',
+          dependencies: Array.isArray(t.dependencies) ? t.dependencies : [],
+        };
+      });
+
+      return {
+        feature_name: featureName,
+        feature_description: featureDescription,
+        color,
+        priority,
+        dependencies: Array.isArray(feat.dependencies) ? feat.dependencies : [],
+        tasks: normalizedTasks,
+      };
+    });
+
+    return {
+      project_name:
+        raw.project_name ||
+        raw.projectName ||
+        dto.projectInfo?.name ||
+        'Untitled Project',
+      project_description:
+        raw.project_description ||
+        raw.projectDescription ||
+        dto.projectInfo?.description ||
+        '',
+      projectSummary:
+        raw.projectSummary ||
+        `Decomposed onboarding plan for ${dto.projectInfo?.name || 'Project'}`,
+      assumptions: Array.isArray(raw.assumptions) ? raw.assumptions : [],
+      features: normalizedFeatures,
+    };
   }
 }

@@ -59,6 +59,10 @@ export class GeminiService {
    * Streams generation content using OpenRouter API (if configured), direct Gemini API,
    * or falls back to simulated stream in mock mode if API fails.
    */
+  /**
+   * Streams generation content using OpenRouter API (if configured), direct Gemini API,
+   * or falls back to simulated stream in mock mode if API fails.
+   */
   async generateContentStream(
     systemInstruction: string,
     prompt: string,
@@ -75,6 +79,7 @@ export class GeminiService {
         return await this.generateOpenRouterStream(
           systemInstruction,
           prompt,
+          responseSchema,
           onChunk,
         );
       } catch (error: any) {
@@ -153,11 +158,21 @@ export class GeminiService {
   private async generateOpenRouterStream(
     systemInstruction: string,
     prompt: string,
+    responseSchema: any,
     onChunk: (text: string) => void,
   ): Promise<Record<string, any>> {
     const model =
       process.env.OPENROUTER_MODEL || GeminiService.DEFAULT_OPENROUTER_MODEL;
     this.logger.log(`Streaming from OpenRouter API (Model: ${model})...`);
+
+    let fullSystemInstruction = systemInstruction;
+    if (responseSchema) {
+      fullSystemInstruction += `\n\nCRITICAL OUTPUT RULES:
+1. You MUST output ONLY valid JSON matching this schema:
+${JSON.stringify(responseSchema)}
+2. Keep task and feature descriptions concise.
+3. Do NOT wrap output in markdown formatting or extra text.`;
+    }
 
     const response = await fetch(
       'https://openrouter.ai/api/v1/chat/completions',
@@ -172,11 +187,11 @@ export class GeminiService {
         body: JSON.stringify({
           model,
           messages: [
-            { role: 'system', content: systemInstruction },
+            { role: 'system', content: fullSystemInstruction },
             { role: 'user', content: prompt },
           ],
           response_format: { type: 'json_object' },
-          max_tokens: 4000,
+          max_tokens: 8192,
           stream: true,
         }),
       },
@@ -228,6 +243,7 @@ export class GeminiService {
 
   /**
    * Cleans potential Markdown code-block wrappers (```json ... ```) before parsing JSON.
+   * Attempts auto-repair if LLM output was truncated mid-stream.
    */
   private cleanAndParseJson(rawText: string): Record<string, any> {
     let cleaned = rawText.trim();
@@ -236,7 +252,88 @@ export class GeminiService {
       .replace(/\s*```$/i, '')
       .trim();
 
-    return JSON.parse(cleaned);
+    try {
+      return JSON.parse(cleaned);
+    } catch (firstError) {
+      this.logger.warn(
+        `JSON parse error on raw LLM output. Attempting auto-repair for truncated stream...`,
+      );
+      const repaired = this.tryRepairTruncatedJson(cleaned);
+      if (repaired) {
+        this.logger.log('Successfully auto-repaired truncated JSON response.');
+        return repaired;
+      }
+      throw firstError;
+    }
+  }
+
+  private tryRepairTruncatedJson(jsonStr: string): Record<string, any> | null {
+    let str = jsonStr.trim();
+    if (!str.startsWith('{') && !str.startsWith('[')) return null;
+
+    // Check for unbalanced quotes (unterminated string)
+    let inString = false;
+    let escape = false;
+    for (let i = 0; i < str.length; i++) {
+      const char = str[i];
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (char === '\\') {
+        escape = true;
+        continue;
+      }
+      if (char === '"') {
+        inString = !inString;
+      }
+    }
+
+    if (inString) {
+      str += '"';
+    }
+
+    // Remove dangling trailing comma or key prefix at the end
+    str = str.replace(/,\s*$/, '').replace(/,\s*"[^"]*"?\s*:?\s*$/, '');
+
+    // Track open brackets/braces to close them
+    const stack: string[] = [];
+    inString = false;
+    escape = false;
+    for (let i = 0; i < str.length; i++) {
+      const char = str[i];
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (char === '\\') {
+        escape = true;
+        continue;
+      }
+      if (char === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (!inString) {
+        if (char === '{' || char === '[') {
+          stack.push(char === '{' ? '}' : ']');
+        } else if (char === '}' || char === ']') {
+          if (stack.length > 0 && stack[stack.length - 1] === char) {
+            stack.pop();
+          }
+        }
+      }
+    }
+
+    while (stack.length > 0) {
+      str += stack.pop();
+    }
+
+    try {
+      return JSON.parse(str);
+    } catch {
+      return null;
+    }
   }
 
   private async runMockStream(

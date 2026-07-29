@@ -245,6 +245,7 @@ export class TasksService {
         createdBy: true,
         assignee: true,
         boardColumn: true,
+        dependencies: true,
         subtasks: true,
         comments: { user: true },
       },
@@ -275,6 +276,7 @@ export class TasksService {
         createdBy: true,
         assignee: true,
         boardColumn: true,
+        dependencies: true,
         subtasks: true,
         comments: { user: true },
       },
@@ -292,7 +294,7 @@ export class TasksService {
     dto: CreateTaskDto,
     userId: string,
   ) {
-    const { assigneeId, assignee: assigneeInput, ...scalarFields } = dto;
+    const { assigneeId, assignee: assigneeInput, dependencyIds, ...scalarFields } = dto;
     const resolvedAssigneeId =
       assigneeInput !== undefined ? assigneeInput : assigneeId;
     const creatorId = userId;
@@ -332,6 +334,19 @@ export class TasksService {
       );
     }
 
+    let dependencies: Task[] = [];
+    if (dependencyIds && dependencyIds.length > 0) {
+      const uniqueDepIds = Array.from(new Set(dependencyIds));
+      dependencies = await this.taskRepo.find({
+        where: uniqueDepIds.map((id) => ({ id, project: { id: projectId } })),
+      });
+      if (dependencies.length !== uniqueDepIds.length) {
+        throw new BadRequestException(
+          'One or more dependency tasks were not found in this project',
+        );
+      }
+    }
+
     const task = this.taskRepo.create({
       ...scalarFields,
       deadline: dto.deadline ? new Date(dto.deadline) : null,
@@ -340,6 +355,7 @@ export class TasksService {
       createdBy: currentUser!,
       assignee,
       boardColumn,
+      dependencies,
       subtasks: [],
       comments: [],
       timeLogs: [],
@@ -383,6 +399,7 @@ export class TasksService {
         createdBy: true,
         assignee: true,
         boardColumn: true,
+        dependencies: true,
         subtasks: true,
         comments: {
           user: true,
@@ -409,6 +426,7 @@ export class TasksService {
         project: true,
         createdBy: true,
         assignee: true,
+        dependencies: true,
         subtasks: true,
         boardColumn: true,
         comments: { user: true },
@@ -426,6 +444,7 @@ export class TasksService {
       assigneeId,
       assignee: assigneeInput,
       boardColumnId,
+      dependencyIds,
       ...scalarFields
     } = dto;
     const resolvedAssigneeId =
@@ -452,6 +471,29 @@ export class TasksService {
         boardColumnId,
         task.project.id,
       );
+    }
+
+    if (dependencyIds !== undefined) {
+      if (dependencyIds.includes(taskId)) {
+        throw new BadRequestException('A task cannot depend on itself');
+      }
+      if (dependencyIds.length === 0) {
+        task.dependencies = [];
+      } else {
+        const uniqueDepIds = Array.from(new Set(dependencyIds));
+        const foundDeps = await this.taskRepo.find({
+          where: uniqueDepIds.map((id) => ({
+            id,
+            project: { id: task.project.id },
+          })),
+        });
+        if (foundDeps.length !== uniqueDepIds.length) {
+          throw new BadRequestException(
+            'One or more dependency tasks were not found in this project',
+          );
+        }
+        task.dependencies = foundDeps;
+      }
     }
 
     if (scalarFields.deadline !== undefined) {
@@ -496,7 +538,11 @@ export class TasksService {
           newAssigneeId,
           userId,
         );
-      } else if (oldAssigneeId && newAssigneeId && oldAssigneeId !== newAssigneeId) {
+      } else if (
+        oldAssigneeId &&
+        newAssigneeId &&
+        oldAssigneeId !== newAssigneeId
+      ) {
         await this.createTaskUnassignedNotification(
           savedTask.id,
           savedTask.title,
@@ -585,7 +631,7 @@ export class TasksService {
     });
 
     const savedSubtask = await this.subtaskRepo.save(subtask);
-    
+
     const payload: SubtaskCreatedPayload = {
       projectId: task.project.id,
       taskId: task.id,
