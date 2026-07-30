@@ -5,15 +5,23 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   ManyToOne,
+  OneToOne,
   JoinColumn,
-  Unique,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
+import { Workshop } from '@modules/canvas/entities/workshop.entity';
+import { DraftStatus } from '../enums/draft-status.enum';
 
 @Entity('onboarding_drafts')
 export class OnboardingDraft {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
+
+  @Column({ type: 'enum', enum: DraftStatus, default: DraftStatus.DRAFT })
+  status!: DraftStatus;
+
+  @OneToOne(() => Workshop, (workshop) => workshop.draft)
+  workshop!: Workshop;
 
   @Column({ name: 'user_id', type: 'uuid' })
   userId!: string;
@@ -30,9 +38,6 @@ export class OnboardingDraft {
     estimatedTime?: string;
     constraints?: Record<string, any>;
   };
-
-  @Column({ name: 'workshop_state', type: 'jsonb', nullable: true })
-  workshopState!: Record<string, unknown> | null;
 
   /**
    * Set atomically during the submit transaction to prevent double-submit.

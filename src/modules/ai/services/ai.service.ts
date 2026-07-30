@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AIGenerationJob } from '../entities/ai-generation-job.entity';
+import { AIChatMessage } from '../entities/ai-chat-message.entity';
 import { AIGenerationStatus } from '../enums/ai-generation-status.enum';
 import { GeminiService } from './gemini.service';
 import { RealtimeService } from '../../realtime/services/realtime.service';
@@ -9,22 +10,47 @@ import {
   GenerateOnboardingPlanDto,
   BoardAIChatDto,
 } from '../dtos/ai-generation.dto';
+import { OnboardingDraft } from '@modules/projects/entities/onboarding-draft.entity';
+import { Workshop } from '@modules/canvas/entities/workshop.entity';
+import { WorkshopObject } from '@modules/canvas/entities/workshop-object.entity';
+import { WorkshopConnection } from '@modules/canvas/entities/workshop-connection.entity';
+import { WorkshopStateSerializer } from './workshop-state-serializer';
+import { WorkshopCanvasService } from '@modules/canvas/services/workshop-canvas.service';
 
 @Injectable()
 export class AIService {
   private readonly logger = new Logger(AIService.name);
+  private static readonly MAX_HISTORY_MESSAGES = 15;
 
   constructor(
     @InjectRepository(AIGenerationJob)
     private readonly jobRepo: Repository<AIGenerationJob>,
+    @InjectRepository(AIChatMessage)
+    private readonly messageRepo: Repository<AIChatMessage>,
+    @InjectRepository(OnboardingDraft)
+    private readonly draftRepo: Repository<OnboardingDraft>,
+    @InjectRepository(Workshop)
+    private readonly workshopRepo: Repository<Workshop>,
+    @InjectRepository(WorkshopObject)
+    private readonly workshopObjectRepo: Repository<WorkshopObject>,
+    @InjectRepository(WorkshopConnection)
+    private readonly workshopConnectionRepo: Repository<WorkshopConnection>,
     private readonly geminiService: GeminiService,
     private readonly realtimeService: RealtimeService,
+    private readonly workshopCanvasService: WorkshopCanvasService,
   ) {}
 
   async generateOnboardingPlan(
     userId: string,
     dto: GenerateOnboardingPlanDto,
   ): Promise<{ generationId: string; status: AIGenerationStatus }> {
+    const draft = await this.draftRepo.findOne({
+      where: { id: dto.draftId, userId },
+    });
+    if (!draft) {
+      throw new NotFoundException('Onboarding draft not found');
+    }
+
     // 1. Create a pending job record
     const job = this.jobRepo.create({
       requestedBy: userId,
@@ -33,7 +59,8 @@ export class AIService {
       provider: 'gemini',
       model: this.geminiService.getModelName(),
       inputSnapshot: {
-        projectInfo: dto.projectInfo,
+        draftId: dto.draftId,
+        projectInfo: draft.projectInfo,
       },
     });
 
@@ -47,12 +74,14 @@ export class AIService {
     });
 
     // 2. Run generation asynchronously
-    this.runOnboardingPlanGeneration(userId, generationId, dto).catch((err) => {
-      this.logger.error(
-        `Onboarding plan generation failed: ${generationId}`,
-        err,
-      );
-    });
+    this.runOnboardingPlanGeneration(userId, generationId, dto).catch(
+      (err) => {
+        this.logger.error(
+          `Onboarding plan generation failed: ${generationId}`,
+          err,
+        );
+      },
+    );
 
     return { generationId, status: AIGenerationStatus.PENDING };
   }
@@ -62,7 +91,6 @@ export class AIService {
     generationId: string,
     dto: GenerateOnboardingPlanDto,
   ): Promise<void> {
-    // Update to PROCESSING
     await this.jobRepo.update(generationId, {
       status: AIGenerationStatus.PROCESSING,
     });
@@ -72,13 +100,53 @@ export class AIService {
     });
 
     try {
+      // Load the draft to get canonical project info from DB — single source of truth
+      const draft = await this.draftRepo.findOne({
+        where: { id: dto.draftId },
+      });
+      if (!draft) {
+        throw new Error('Onboarding draft not found during generation');
+      }
+      const projectInfo = draft.projectInfo;
+
+      // Load workshop state directly from DB
+      const workshop = await this.workshopRepo.findOne({
+        where: { draftId: dto.draftId },
+      });
+
+      let workshopContext: Record<string, unknown> = {};
+      if (workshop) {
+        const objects = await this.workshopObjectRepo.find({
+          where: { workshopId: workshop.id },
+        });
+        const connections = await this.workshopConnectionRepo.find({
+          where: { workshopId: workshop.id },
+        });
+        workshopContext = WorkshopStateSerializer.serialize(
+          objects,
+          connections,
+        );
+      }
+
+      // Load persistent chat history for context window (capped to MAX_HISTORY_MESSAGES)
+      const chatHistory = await this.messageRepo.find({
+        where: { draftId: dto.draftId },
+        order: { createdAt: 'DESC' },
+        take: AIService.MAX_HISTORY_MESSAGES,
+      });
+
+      const formattedHistory = chatHistory
+        .reverse()
+        .map((m) => ({ role: m.role, content: m.content }));
+
       const systemInstruction =
-        'You are an expert product manager. Given a project goal and context, decompose the request into a set of features (sections) and tasks. Return ONLY valid JSON matching the schema. No markdown formatting wraps, no prose.';
+        'You are an expert product manager. Given a project goal, context, and current workshop state, decompose the request into a set of features (sections) and tasks. Return ONLY valid JSON matching the schema. No markdown formatting wraps, no prose.';
 
       const prompt = `Decompose this product idea: "${dto.prompt}".
-Project Info: Name: "${dto.projectInfo.name}", Description: "${dto.projectInfo.description || ''}".
-Existing Workshop state context if any: ${JSON.stringify(dto.currentWorkshopState || {})}.
-Constraints target stack: ${JSON.stringify(dto.projectInfo.constraints || {})}.`;
+Project Info: Name: "${projectInfo.name}", Description: "${projectInfo.description || ''}".
+Persisted DB Workshop state context: ${JSON.stringify(workshopContext)}.
+Constraints target stack: ${JSON.stringify(projectInfo.constraints || {})}.
+Conversation History: ${JSON.stringify(formattedHistory)}.`;
 
       const responseSchema = this.geminiService.getOnboardingSchema();
 
@@ -96,9 +164,32 @@ Constraints target stack: ${JSON.stringify(dto.projectInfo.constraints || {})}.`
         },
       );
 
-      const normalizedResult = this.normalizeOnboardingPlan(result, dto);
+      const normalizedResult = this.normalizeOnboardingPlan(result, projectInfo);
 
-      // Validate output structure and save completed job
+      // Save user prompt & assistant response in AIChatMessage
+      await this.messageRepo.save([
+        this.messageRepo.create({
+          draftId: dto.draftId,
+          role: 'user',
+          content: dto.prompt,
+          generationJobId: generationId,
+        }),
+        this.messageRepo.create({
+          draftId: dto.draftId,
+          role: 'assistant',
+          content: JSON.stringify(normalizedResult),
+          generationJobId: generationId,
+        }),
+      ]);
+
+      // Persist AI plan directly into Workshop DB entities with auto-layout.
+      // The frontend reads GET /workshop/:draftId — no coordinate posting needed.
+      const workshopSnapshot = await this.workshopCanvasService.applyAIPlanToWorkshop(
+        dto.draftId,
+        normalizedResult,
+      );
+
+      // Save completed job
       await this.jobRepo.update(generationId, {
         status: AIGenerationStatus.COMPLETED,
         outputSnapshot: normalizedResult,
@@ -109,6 +200,9 @@ Constraints target stack: ${JSON.stringify(dto.projectInfo.constraints || {})}.`
         generationId,
         status: AIGenerationStatus.COMPLETED,
         output: normalizedResult,
+        // Include the freshly-persisted workshop so the FE can render immediately
+        // without a separate GET request.
+        workshop: workshopSnapshot,
       });
     } catch (error) {
       const message =
@@ -132,7 +226,6 @@ Constraints target stack: ${JSON.stringify(dto.projectInfo.constraints || {})}.`
     projectId: string,
     dto: BoardAIChatDto,
   ): Promise<{ generationId: string; status: AIGenerationStatus }> {
-    // 1. Create job linked to project
     const job = this.jobRepo.create({
       requestedBy: userId,
       projectId,
@@ -141,7 +234,6 @@ Constraints target stack: ${JSON.stringify(dto.projectInfo.constraints || {})}.`
       provider: 'gemini',
       model: this.geminiService.getModelName(),
       inputSnapshot: {
-        history: dto.history,
         boardContext: dto.boardContext,
       },
     });
@@ -149,7 +241,6 @@ Constraints target stack: ${JSON.stringify(dto.projectInfo.constraints || {})}.`
     const savedJob = await this.jobRepo.save(job);
     const generationId = savedJob.id;
 
-    // 2. Run board generation asynchronously
     this.runBoardAIChat(projectId, generationId, dto).catch((err) => {
       this.logger.error(
         `Board AI chat suggestions failed: ${generationId}`,
@@ -170,19 +261,27 @@ Constraints target stack: ${JSON.stringify(dto.projectInfo.constraints || {})}.`
     });
 
     try {
+      // Fetch persistent history (capped to MAX_HISTORY_MESSAGES)
+      const chatHistory = await this.messageRepo.find({
+        where: { projectId },
+        order: { createdAt: 'DESC' },
+        take: AIService.MAX_HISTORY_MESSAGES,
+      });
+
+      const formattedHistory = chatHistory
+        .reverse()
+        .map((m) => ({ role: m.role, content: m.content }));
+
       const systemInstruction =
         'You are an AI assistant living on a Kanban project board. Your role is to suggest board additions or task mutations. Output only valid JSON suggestions mapping to CREATE_COLUMN, CREATE_TASK, UPDATE_TASK, or DELETE_TASK. No prose.';
 
       const prompt = `User request message: "${dto.message}".
-Conversation History: ${JSON.stringify(dto.history || [])}.
-Current board context snapshot (columns, task count, task samples): ${JSON.stringify(
-        dto.boardContext || {},
-      )}.
+Conversation History: ${JSON.stringify(formattedHistory)}.
+Current board context snapshot: ${JSON.stringify(dto.boardContext || {})}.
 Provide suggestions matching the JSON schema.`;
 
       const responseSchema = this.geminiService.getBoardChatSchema();
 
-      // Call streaming API
       const result = await this.geminiService.generateContentStream(
         systemInstruction,
         prompt,
@@ -195,7 +294,22 @@ Provide suggestions matching the JSON schema.`;
         },
       );
 
-      // Save job as completed
+      // Save persistent messages
+      await this.messageRepo.save([
+        this.messageRepo.create({
+          projectId,
+          role: 'user',
+          content: dto.message,
+          generationJobId: generationId,
+        }),
+        this.messageRepo.create({
+          projectId,
+          role: 'assistant',
+          content: JSON.stringify(result.suggestions || []),
+          generationJobId: generationId,
+        }),
+      ]);
+
       await this.jobRepo.update(generationId, {
         status: AIGenerationStatus.COMPLETED,
         outputSnapshot: result,
@@ -222,6 +336,30 @@ Provide suggestions matching the JSON schema.`;
     }
   }
 
+  async getDraftMessages(
+    draftId: string,
+    userId: string,
+  ): Promise<AIChatMessage[]> {
+    const draft = await this.draftRepo.findOne({
+      where: { id: draftId, userId },
+    });
+    if (!draft) {
+      throw new NotFoundException('Onboarding draft not found');
+    }
+
+    return this.messageRepo.find({
+      where: { draftId },
+      order: { createdAt: 'ASC' },
+    });
+  }
+
+  async getProjectMessages(projectId: string): Promise<AIChatMessage[]> {
+    return this.messageRepo.find({
+      where: { projectId },
+      order: { createdAt: 'ASC' },
+    });
+  }
+
   async getGenerationJob(
     generationId: string,
     userId: string,
@@ -238,7 +376,7 @@ Provide suggestions matching the JSON schema.`;
 
   private normalizeOnboardingPlan(
     raw: Record<string, any>,
-    dto: GenerateOnboardingPlanDto,
+    projectInfo: OnboardingDraft['projectInfo'],
   ): Record<string, any> {
     if (!raw || typeof raw !== 'object') {
       raw = {};
@@ -315,16 +453,16 @@ Provide suggestions matching the JSON schema.`;
       project_name:
         raw.project_name ||
         raw.projectName ||
-        dto.projectInfo?.name ||
+        projectInfo.name ||
         'Untitled Project',
       project_description:
         raw.project_description ||
         raw.projectDescription ||
-        dto.projectInfo?.description ||
+        projectInfo.description ||
         '',
       projectSummary:
         raw.projectSummary ||
-        `Decomposed onboarding plan for ${dto.projectInfo?.name || 'Project'}`,
+        `Decomposed onboarding plan for ${projectInfo.name || 'Project'}`,
       assumptions: Array.isArray(raw.assumptions) ? raw.assumptions : [],
       features: normalizedFeatures,
     };

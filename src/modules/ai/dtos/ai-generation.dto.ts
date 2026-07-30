@@ -3,11 +3,11 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUUID,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import {
-  OnboardingProjectInfoDto,
   ConstraintsDto,
   ProjectCategory,
 } from '../../projects/dtos/save-onboarding-draft.dto';
@@ -15,16 +15,12 @@ import {
 export { ConstraintsDto, ProjectCategory };
 
 export class GenerateOnboardingPlanDto {
+  @IsUUID()
+  draftId!: string;
+
   @IsString()
   @IsNotEmpty()
   prompt!: string;
-
-  @ValidateNested()
-  @Type(() => OnboardingProjectInfoDto)
-  projectInfo!: OnboardingProjectInfoDto;
-
-  @IsOptional()
-  currentWorkshopState?: Record<string, unknown>;
 }
 
 export class ChatMessageDto {
@@ -35,6 +31,10 @@ export class ChatMessageDto {
   @IsString()
   @IsNotEmpty()
   content!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  createdAt!: Date;
 }
 
 export class BoardContextColumnDto {
@@ -85,12 +85,6 @@ export class BoardAIChatDto {
   @IsString()
   @IsNotEmpty()
   message!: string;
-
-  @IsOptional()
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => ChatMessageDto)
-  history?: ChatMessageDto[];
 
   @IsOptional()
   @ValidateNested()

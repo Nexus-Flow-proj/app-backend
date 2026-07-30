@@ -16,14 +16,17 @@ import { RequirePermission } from '@shared/decorators/require-permission.decorat
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
 import { User } from '../users/entities/user.entity';
 import { AIService } from './services/ai.service';
-import { GenerateOnboardingPlanDto, BoardAIChatDto } from './dtos/ai-generation.dto';
+import {
+  GenerateOnboardingPlanDto,
+  BoardAIChatDto,
+} from './dtos/ai-generation.dto';
 
 @Controller()
 @UseGuards(JwtAuthGuard)
 export class AIController {
   constructor(private readonly aiService: AIService) {}
 
-  // --- Onboarding AI (no project context) ---
+  // --- Onboarding AI (draft-scoped) ---
 
   @Post('projects/onboarding/ai/generate')
   @UseGuards(CsrfGuard)
@@ -47,6 +50,18 @@ export class AIController {
     const data = await this.aiService.getGenerationJob(generationId, user.id);
     return {
       message: 'Onboarding AI generation status retrieved successfully.',
+      data,
+    };
+  }
+
+  @Get('projects/onboarding/ai/drafts/:draftId/messages')
+  async getDraftMessages(
+    @CurrentUser() user: User,
+    @Param('draftId', ParseUUIDPipe) draftId: string,
+  ) {
+    const data = await this.aiService.getDraftMessages(draftId, user.id);
+    return {
+      message: 'Draft AI chat messages retrieved successfully.',
       data,
     };
   }
@@ -79,6 +94,19 @@ export class AIController {
     const data = await this.aiService.getGenerationJob(generationId, user.id);
     return {
       message: 'Board AI generation status retrieved successfully.',
+      data,
+    };
+  }
+
+  @Get('projects/:projectId/ai/messages')
+  @UseGuards(ProjectAuthGuard)
+  @RequirePermission('workshop', 'read')
+  async getProjectMessages(
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+  ) {
+    const data = await this.aiService.getProjectMessages(projectId);
+    return {
+      message: 'Project AI chat messages retrieved successfully.',
       data,
     };
   }

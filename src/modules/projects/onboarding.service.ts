@@ -13,9 +13,14 @@ import { OnboardingDraft } from './entities/onboarding-draft.entity';
 import { User } from '../users/entities/user.entity';
 import { Board } from '../boards/entities/board.entity';
 import { Task } from '../tasks/entities/task.entity';
-import { Canvas } from '../canvas/entities/canvas.entity';
-import { CanvasType } from '../canvas/enums/canvas-type.enum';
 import { TaskStatus } from '../tasks/enums/task-status.enum';
+import { TaskPriority } from '../tasks/enums/task-priority.enum';
+import { TaskType } from '../tasks/enums/task-type.enum';
+import { TaskSource } from '../tasks/enums/task-source.enum';
+import { DraftStatus } from './enums/draft-status.enum';
+import { Workshop } from '@modules/canvas/entities/workshop.entity';
+import { WorkshopObject } from '@modules/canvas/entities/workshop-object.entity';
+import { CanvasObjectType } from '@modules/canvas/enums/canvas-object-type.enum';
 import {
   SaveOnboardingDraftDto,
   UpdateOnboardingDraftDto,
@@ -24,23 +29,13 @@ import { SubmitOnboardingDto } from './dtos/submit-onboarding.dto';
 import { DEFAULT_ROLE_PRESETS } from './projects.service';
 import { ActivitiesService } from '@modules/activities/activities.service';
 
-const DEFAULT_WORKSHOP_STATE = {
-  viewportX: 0,
-  viewportY: 0,
-  viewportZoom: 1,
-  nodes: [],
-  connections: [],
-};
-
 @Injectable()
 export class OnboardingService {
   constructor(
     @InjectRepository(OnboardingDraft)
     private readonly draftRepo: Repository<OnboardingDraft>,
-
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
-
     private readonly dataSource: DataSource,
     private readonly activitiesService: ActivitiesService,
   ) {}
@@ -56,8 +51,8 @@ export class OnboardingService {
 
     const draft = this.draftRepo.create({
       userId,
+      status: DraftStatus.DRAFT,
       projectInfo: dto.projectInfo,
-      workshopState: dto.workshopState || DEFAULT_WORKSHOP_STATE,
     });
 
     return this.draftRepo.save(draft);
@@ -98,9 +93,6 @@ export class OnboardingService {
         ...dto.projectInfo,
       };
     }
-    if (dto.workshopState) {
-      draft.workshopState = dto.workshopState;
-    }
 
     return this.draftRepo.save(draft);
   }
@@ -121,35 +113,49 @@ export class OnboardingService {
       throw new UnauthorizedException('User not found');
     }
 
-    // Atomic transaction for project, columns, tasks, roles, canvases, and draft cleanup
     const result = await this.dataSource.transaction(async (manager) => {
-      // 1. Double-submit / Idempotency protection check & draft resolution
-      if (dto.draftId) {
-        const draft = await manager.findOne(OnboardingDraft, {
-          where: { id: dto.draftId, userId },
-        });
-        if (draft) {
-          if (draft.submittedAt) {
-            throw new ConflictException(
-              'This onboarding project creation has already been submitted',
-            );
-          }
-          // Lock the draft session
-          draft.submittedAt = new Date();
-          await manager.save(OnboardingDraft, draft);
-        }
+      // 1. Fetch and validate draft
+      const draft = await manager.findOne(OnboardingDraft, {
+        where: { id: dto.draftId, userId },
+      });
+
+      if (!draft) {
+        throw new NotFoundException('Onboarding draft not found');
       }
 
-      // 2. Create Project
+      if (draft.submittedAt || draft.status === DraftStatus.SUBMITTED) {
+        throw new ConflictException(
+          'This onboarding draft has already been submitted',
+        );
+      }
+
+      // 2. Fetch DB-persisted Workshop & objects
+      const workshop = await manager.findOne(Workshop, {
+        where: { draftId: draft.id },
+      });
+
+      const workshopObjects = workshop
+        ? await manager.find(WorkshopObject, {
+            where: { workshopId: workshop.id },
+            order: { zIndex: 'ASC', createdAt: 'ASC' },
+          })
+        : [];
+
+      // Mark draft as SUBMITTED atomically
+      draft.status = DraftStatus.SUBMITTED;
+      draft.submittedAt = new Date();
+      await manager.save(OnboardingDraft, draft);
+
+      // 3. Create Project (read entirely from the persisted draft — single source of truth)
       const project = manager.create(Project, {
-        name: dto.projectInfo.name,
-        description: dto.projectInfo.description ?? null,
-        color: dto.projectInfo.color,
+        name: draft.projectInfo.name,
+        description: draft.projectInfo.description ?? null,
+        color: draft.projectInfo.color,
         admin: owner,
       });
       const savedProject = await manager.save(Project, project);
 
-      // 3. Create Default Role Presets
+      // 4. Create Default Role Presets
       const rolesToCreate = DEFAULT_ROLE_PRESETS.map((preset) =>
         manager.create(ProjectRoleEntity, {
           ...preset,
@@ -163,7 +169,7 @@ export class OnboardingService {
         throw new NotFoundException('Default admin role could not be created');
       }
 
-      // 4. Create Project Member (Admin)
+      // 5. Create Project Member (Admin)
       await manager.save(
         manager.create(ProjectMember, {
           project: savedProject,
@@ -172,18 +178,30 @@ export class OnboardingService {
         }),
       );
 
-      // 5. Create Board Columns and Tasks
+      // 6. Compile Workshop state into Board columns and Task items
       let totalTasks = 0;
       const boardColumnInfo: Array<{ id: string; name: string; color: string }> =
         [];
 
-      for (const feature of dto.features) {
+      const sectionFrames = workshopObjects.filter(
+        (obj) => obj.type === CanvasObjectType.SECTION_FRAME,
+      );
+      const taskCards = workshopObjects.filter(
+        (obj) => obj.type === CanvasObjectType.TASK_CARD,
+      );
+
+      let sortOrderCounter = 0;
+      for (const frame of sectionFrames) {
+        const frameData = (frame.data ?? {}) as Record<string, any>;
+        const columnTitle = frameData.title || 'Untitled Feature';
+        const columnColor = frameData.borderColor || '#3b82f6';
+
         const savedColumn = await manager.save(
           manager.create(Board, {
             project: savedProject,
-            name: feature.title,
-            color: feature.color,
-            sortOrder: feature.sortOrder,
+            name: columnTitle,
+            color: columnColor,
+            sortOrder: sortOrderCounter++,
             isProtected: false,
           }),
         );
@@ -194,67 +212,63 @@ export class OnboardingService {
           color: savedColumn.color,
         });
 
-        if (feature.tasks && feature.tasks.length > 0) {
-          for (const taskDto of feature.tasks) {
-            let description = taskDto.description ?? '';
-            if (
-              taskDto.acceptanceCriteria &&
-              taskDto.acceptanceCriteria.length > 0
-            ) {
-              const formattedAc = taskDto.acceptanceCriteria
-                .map((ac) => `- ${ac}`)
-                .join('\n');
-              description =
-                `${description}\n\n**Acceptance Criteria:**\n${formattedAc}`.trim();
-            }
+        // Find task cards inside this section frame
+        const childTasks = taskCards.filter((task) => {
+          const taskData = (task.data ?? {}) as Record<string, any>;
+          return taskData.featureId === frame.id;
+        });
 
-            const task = manager.create(Task, {
-              project: savedProject,
-              createdBy: owner,
-              title: taskDto.title,
-              description: description || undefined,
-              priority: taskDto.priority,
-              type: taskDto.type,
-              status: TaskStatus.TODO,
-              boardColumn: savedColumn,
-              columnOrder: taskDto.sortOrder,
-              source: taskDto.source,
-              metadata: taskDto.estimatedComplexity
-                ? { complexity: taskDto.estimatedComplexity }
-                : null,
-            });
-            await manager.save(Task, task);
-            totalTasks++;
-          }
+        let taskOrderCounter = 0;
+        for (const taskObj of childTasks) {
+          const taskData = (taskObj.data ?? {}) as Record<string, any>;
+          const taskEntity = manager.create(Task, {
+            project: savedProject,
+            createdBy: owner,
+            title: taskData.title || 'Untitled Task',
+            description: taskData.description || undefined,
+            priority: TaskPriority.MEDIUM,
+            type: TaskType.FEATURE,
+            status: TaskStatus.TODO,
+            boardColumn: savedColumn,
+            columnOrder: taskOrderCounter++,
+            source: TaskSource.AI,
+          });
+          await manager.save(Task, taskEntity);
+          totalTasks++;
         }
       }
 
-      // 6. Create Personal Canvas
-      const canvas = manager.create(Canvas, {
-        projectId: savedProject.id,
-        ownerId: userId,
-        type: CanvasType.PERSONAL,
-        name: 'My Canvas',
-      });
-      await manager.save(Canvas, canvas);
-
-      // 7. Delete the submitted Onboarding Draft row if draftId was provided
-      if (dto.draftId) {
-        await manager.delete(OnboardingDraft, { id: dto.draftId, userId });
+      // If no section frames exist, create default TODO column
+      if (sectionFrames.length === 0) {
+        const defaultColumn = await manager.save(
+          manager.create(Board, {
+            project: savedProject,
+            name: 'TODO',
+            color: '#3b82f6',
+            sortOrder: 0,
+            isProtected: false,
+          }),
+        );
+        boardColumnInfo.push({
+          id: defaultColumn.id,
+          name: defaultColumn.name,
+          color: defaultColumn.color,
+        });
       }
 
       return {
         projectId: savedProject.id,
+        projectName: savedProject.name,
         boardColumns: boardColumnInfo,
         taskCount: totalTasks,
       };
     });
 
-    // 8. Log project creation activity outside the transaction to avoid lock escalation
+    // 7. Log project creation activity
     await this.activitiesService.logActivity(
       userId,
       result.projectId,
-      `created project via onboarding: ${dto.projectInfo.name}`,
+      `created project via onboarding: ${result.projectName}`,
       'project',
       result.projectId,
     );

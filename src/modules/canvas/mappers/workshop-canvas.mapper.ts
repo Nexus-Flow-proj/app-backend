@@ -1,7 +1,6 @@
-import { Canvas } from '../entities/canvas.entity';
-import { CanvasConnection } from '../entities/canvas-connection.entity';
-import { CanvasObject } from '../entities/canvas-object.entity';
-import { toUserResponse } from '@modules/users/mappers/user.mapper';
+import { Workshop } from '../entities/workshop.entity';
+import { WorkshopConnection } from '../entities/workshop-connection.entity';
+import { WorkshopObject } from '../entities/workshop-object.entity';
 import { WorkshopCanvasResponseDto } from '../dtos/workshop/workshop-canvas-response.dto';
 import { WorkshopCanvasObjectDto } from '../dtos/workshop/workshop-canvas-object.dto';
 import { WorkshopCanvasConnectionDto } from '../dtos/workshop/workshop-canvas-connection.dto';
@@ -11,36 +10,27 @@ import { StickyNoteDataDto } from '../dtos/workshop/sticky-note-data.dto';
 import { CanvasObjectType } from '../enums/canvas-object-type.enum';
 
 export function toWorkshopCanvasResponse(
-  canvas: Canvas,
+  workshop: Workshop,
 ): WorkshopCanvasResponseDto {
-  const canvasWithRelations = canvas as Canvas & {
-    objects?: CanvasObject[];
-    connections?: CanvasConnection[];
-  };
-
   return {
-    id: canvas.id,
-    projectId: canvas.projectId,
-    owner: toUserResponse(canvas.owner),
-    type: 'PROJECT',
-    objects: (canvasWithRelations.objects ?? []).map(
-      toWorkshopCanvasObjectResponse,
-    ),
-    connections: (canvasWithRelations.connections ?? []).map(
+    id: workshop.id,
+    draftId: workshop.draftId,
+    objects: (workshop.objects ?? []).map(toWorkshopCanvasObjectResponse),
+    connections: (workshop.connections ?? []).map(
       toWorkshopCanvasConnectionResponse,
     ),
     viewport: {
-      x: canvas.viewportX,
-      y: canvas.viewportY,
-      scale: canvas.viewportZoom,
+      x: workshop.viewportX,
+      y: workshop.viewportY,
+      scale: workshop.viewportZoom,
     },
-    createdAt: canvas.createdAt,
-    updatedAt: canvas.updatedAt,
+    createdAt: workshop.createdAt,
+    updatedAt: workshop.updatedAt,
   };
 }
 
 export function toWorkshopCanvasObjectResponse(
-  object: CanvasObject,
+  object: WorkshopObject,
 ): WorkshopCanvasObjectDto {
   return {
     id: object.id,
@@ -59,7 +49,7 @@ export function toWorkshopCanvasObjectResponse(
 }
 
 export function toWorkshopCanvasConnectionResponse(
-  connection: CanvasConnection,
+  connection: WorkshopConnection,
 ): WorkshopCanvasConnectionDto {
   return {
     id: connection.id,
@@ -78,7 +68,7 @@ export function toWorkshopCanvasConnectionResponse(
 }
 
 function toWorkshopCanvasObjectData(
-  object: CanvasObject,
+  object: WorkshopObject,
 ): FeatureDataDto | TaskDataDto | StickyNoteDataDto {
   switch (object.type) {
     case CanvasObjectType.SECTION_FRAME:
@@ -94,7 +84,6 @@ function toWorkshopCanvasObjectData(
         borderColor: String(
           (object.data as { borderColor?: string } | null)?.borderColor ?? '',
         ),
-        boardColumnId: object.boardColumnId ?? undefined,
       };
     case CanvasObjectType.TASK_CARD:
       return {
@@ -106,7 +95,6 @@ function toWorkshopCanvasObjectData(
         featureId: String(
           (object.data as { featureId?: string } | null)?.featureId ?? '',
         ),
-        taskId: object.taskId ?? undefined,
       };
     case CanvasObjectType.STICKY_NOTE:
     default:
