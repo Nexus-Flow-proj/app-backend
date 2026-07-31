@@ -169,7 +169,8 @@ export class WorkshopCanvasService {
               workshopId: workshop.id,
               type: CanvasObjectType.TASK_CARD,
               x: frameX + FRAME_PADDING_SIDE,
-              y: frameY + FRAME_PADDING_TOP + ti * (TASK_CARD_HEIGHT + TASK_GAP),
+              y:
+                frameY + FRAME_PADDING_TOP + ti * (TASK_CARD_HEIGHT + TASK_GAP),
               width: TASK_CARD_WIDTH,
               height: TASK_CARD_HEIGHT,
               rotation: 0,

@@ -46,7 +46,6 @@ export class SaveWorkshopCanvasObjectDto {
         return value;
     }
   })
-  @Type(() => SaveWorkshopFeatureDataDto)
   data!:
     | SaveWorkshopFeatureDataDto
     | SaveWorkshopTaskDataDto
