@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, DeepPartial, In, Repository } from 'typeorm';
 import { randomUUID } from 'node:crypto';
+import { isUUID } from 'class-validator';
 import { Workshop } from '../entities/workshop.entity';
 import { WorkshopObject } from '../entities/workshop-object.entity';
 import { WorkshopConnection } from '../entities/workshop-connection.entity';
@@ -46,6 +47,8 @@ export class WorkshopCanvasService {
   ): Promise<WorkshopCanvasResponseDto> {
     await this.findDraftOrFail(draftId, userId);
 
+    this.normalizeClientIds(dto);
+
     return this.dataSource.transaction(async (manager) => {
       const workshop = await this.findOrCreateDraftWorkshop(draftId, manager);
 
@@ -64,6 +67,44 @@ export class WorkshopCanvasService {
       const loadedWorkshop = await this.loadWorkshop(workshop.id, manager);
       return toWorkshopCanvasResponse(loadedWorkshop);
     });
+  }
+
+  /**
+   * Normalizes client temporary IDs (e.g. "frame-1785410928301" or "temp-task-1")
+   * into valid DB UUIDs before validation and persistence.
+   * Remaps references (such as task.data.featureId and connection.fromObjectId/toObjectId).
+   */
+  private normalizeClientIds(dto: SaveWorkshopCanvasDto): void {
+    const idMap = new Map<string, string>();
+
+    for (const object of dto.objects ?? []) {
+      if (!isUUID(object.id)) {
+        const newUuid = randomUUID();
+        idMap.set(object.id, newUuid);
+        object.id = newUuid;
+      }
+    }
+
+    for (const object of dto.objects ?? []) {
+      if (object.type === 'TASK_CARD' && object.data) {
+        const taskData = object.data as SaveWorkshopTaskDataDto;
+        if (taskData.featureId && idMap.has(taskData.featureId)) {
+          taskData.featureId = idMap.get(taskData.featureId)!;
+        }
+      }
+    }
+
+    for (const conn of dto.connections ?? []) {
+      if (!isUUID(conn.id)) {
+        conn.id = randomUUID();
+      }
+      if (conn.fromObjectId && idMap.has(conn.fromObjectId)) {
+        conn.fromObjectId = idMap.get(conn.fromObjectId)!;
+      }
+      if (conn.toObjectId && idMap.has(conn.toObjectId)) {
+        conn.toObjectId = idMap.get(conn.toObjectId)!;
+      }
+    }
   }
 
   // ─── AI Plan Auto-Application ──────────────────────────────────────────────

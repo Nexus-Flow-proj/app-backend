@@ -1,21 +1,27 @@
 import { Type } from 'class-transformer';
 import {
+  IsNotEmpty,
   IsOptional,
   IsString,
-  IsUUID,
   MaxLength,
   ValidateNested,
 } from 'class-validator';
 import { SaveWorkshopCanvasConnectionStyleDto } from './save-workshop-connection-style.dto';
 
 export class SaveWorkshopCanvasConnectionDto {
-  @IsUUID()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(255)
   id!: string;
 
-  @IsUUID()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(255)
   fromObjectId!: string;
 
-  @IsUUID()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(255)
   toObjectId!: string;
 
   @IsOptional()

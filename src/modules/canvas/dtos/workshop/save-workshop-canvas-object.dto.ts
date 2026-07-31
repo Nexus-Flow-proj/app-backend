@@ -1,11 +1,20 @@
 import { Transform, plainToInstance, Type } from 'class-transformer';
-import { IsNumber, IsIn, IsUUID, ValidateNested } from 'class-validator';
+import {
+  IsNumber,
+  IsIn,
+  IsString,
+  IsNotEmpty,
+  MaxLength,
+  ValidateNested,
+} from 'class-validator';
 import { SaveWorkshopFeatureDataDto } from './save-workshop-feature-data.dto';
 import { SaveWorkshopTaskDataDto } from './save-workshop-task-data.dto';
 import { SaveWorkshopStickyNoteDataDto } from './save-workshop-sticky-note-data.dto';
 
 export class SaveWorkshopCanvasObjectDto {
-  @IsUUID()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(255)
   id!: string;
 
   @IsIn(['SECTION_FRAME', 'TASK_CARD', 'STICKY_NOTE'])

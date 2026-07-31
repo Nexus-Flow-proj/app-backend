@@ -9,12 +9,12 @@ import {
 export class SaveWorkshopTaskDataDto {
   @IsOptional()
   @IsString()
-  @MaxLength(36)
+  @MaxLength(255)
   taskId?: string;
 
   @IsString()
   @IsNotEmpty()
-  @MaxLength(36)
+  @MaxLength(255)
   featureId!: string;
 
   @IsString()
