@@ -33,6 +33,7 @@ export class WorkshopStateSerializer {
             id: task.id,
             title: taskData.title || 'Untitled Task',
             description: taskData.description || '',
+            priority: taskData.priority || 'MEDIUM',
             dueDate: taskData.dueDate || null,
           };
         });
@@ -57,6 +58,7 @@ export class WorkshopStateSerializer {
           id: task.id,
           title: taskData.title || 'Untitled Task',
           description: taskData.description || '',
+          priority: taskData.priority || 'MEDIUM',
           dueDate: taskData.dueDate || null,
         };
       });

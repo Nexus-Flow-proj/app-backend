@@ -221,12 +221,17 @@ export class OnboardingService {
         let taskOrderCounter = 0;
         for (const taskObj of childTasks) {
           const taskData = (taskObj.data ?? {}) as Record<string, any>;
+          const rawPriority = String(taskData.priority || 'MEDIUM').toUpperCase();
+          const priority = Object.values(TaskPriority).includes(rawPriority as TaskPriority)
+            ? (rawPriority as TaskPriority)
+            : TaskPriority.MEDIUM;
+
           const taskEntity = manager.create(Task, {
             project: savedProject,
             createdBy: owner,
             title: taskData.title || 'Untitled Task',
             description: taskData.description || undefined,
-            priority: TaskPriority.MEDIUM,
+            priority,
             type: TaskType.FEATURE,
             status: TaskStatus.TODO,
             boardColumn: savedColumn,

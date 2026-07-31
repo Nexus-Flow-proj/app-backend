@@ -95,6 +95,9 @@ function toWorkshopCanvasObjectData(
         featureId: String(
           (object.data as { featureId?: string } | null)?.featureId ?? '',
         ),
+        priority: String(
+          (object.data as { priority?: string } | null)?.priority ?? 'MEDIUM',
+        ),
       };
     case CanvasObjectType.STICKY_NOTE:
     default:

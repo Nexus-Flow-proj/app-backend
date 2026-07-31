@@ -405,6 +405,7 @@ export class WorkshopCanvasService {
           title: data.title,
           description: data.description ?? undefined,
           dueDate: data.dueDate ?? undefined,
+          priority: data.priority ?? 'MEDIUM',
         },
       }) as WorkshopObject;
     }

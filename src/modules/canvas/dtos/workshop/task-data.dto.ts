@@ -5,4 +5,5 @@ export class TaskDataDto {
   title!: string;
   description?: string;
   dueDate?: string;
+  priority?: string;
 }
