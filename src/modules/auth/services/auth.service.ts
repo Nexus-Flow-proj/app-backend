@@ -309,11 +309,13 @@ export class AuthService {
   async getMe(userId: string): Promise<UserResponseDto> {
     const user = await this.userRepository.findOne({
       where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
+      relations: {
+        skills: true,
+        projectMemberships: {
+          project: true,
+          role: true,
+        },
+        ownedProjects: true,
       },
     });
 

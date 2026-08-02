@@ -10,7 +10,16 @@ import {
   Post,
   Query,
   UseGuards,
+  UseInterceptors,
+  UploadedFiles,
+  BadRequestException,
 } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import {
+  attachmentFileFilter,
+  MAX_ATTACHMENT_SIZE_BYTES,
+  MAX_ATTACHMENT_FILES_COUNT,
+} from '@shared/utils/file-validation.util';
 import { TasksService } from './tasks.service';
 import { JwtAuthGuard } from '@shared/guards/jwt-auth.guard';
 import { CsrfGuard } from '@shared/guards/csrf.guard';
@@ -22,6 +31,10 @@ import { PaginationQueryDto } from '@shared/dto/pagination-query.dto';
 import { CreateTaskDto } from './dtos/create-task.dto';
 import { UpdateTaskDto } from './dtos/update-task.dto';
 import { TaskDto, PaginatedTasksDto, TaskListDto } from './dtos/task.dto';
+import {
+  AttachmentUploadResponseDto,
+  AttachmentDeleteResponseDto,
+} from './dtos/storage-response.dto';
 import {
   CreateSubTaskDto,
   SubTaskResponseDto,
@@ -266,5 +279,52 @@ export class TasksController {
   async deleteTimeLog(@Param('lid') logId: string, @CurrentUser() user: User) {
     await this.tasksService.deleteTimeLog(logId, user.id);
     return { message: 'Time log deleted successfully.' };
+  }
+
+  // ─── Attachment Endpoints ──────────────────────────────
+
+  @Post('tasks/:id/attachments')
+  @UseGuards(CsrfGuard)
+  @RequirePermission('tasks', 'update')
+  @UseInterceptors(
+    FilesInterceptor('files', MAX_ATTACHMENT_FILES_COUNT, {
+      limits: { fileSize: MAX_ATTACHMENT_SIZE_BYTES },
+      fileFilter: attachmentFileFilter,
+    }),
+  )
+  @Serialize(AttachmentUploadResponseDto)
+  async uploadAttachments(
+    @Param('id') taskId: string,
+    @UploadedFiles() files: Express.Multer.File[],
+    @CurrentUser() user: User,
+  ) {
+    if (!files || files.length === 0) {
+      throw new BadRequestException(
+        'Please provide files with form field name "files".',
+      );
+    }
+    const data = await this.tasksService.uploadAttachments(
+      taskId,
+      user.id,
+      files,
+    );
+    return { message: 'Attachment(s) uploaded successfully.', data };
+  }
+
+  @Delete('tasks/:id/attachments/:attachmentId')
+  @UseGuards(CsrfGuard)
+  @RequirePermission('tasks', 'update')
+  @Serialize(AttachmentDeleteResponseDto)
+  async deleteAttachment(
+    @Param('id') taskId: string,
+    @Param('attachmentId') attachmentId: string,
+    @CurrentUser() user: User,
+  ) {
+    const data = await this.tasksService.deleteAttachment(
+      taskId,
+      attachmentId,
+      user.id,
+    );
+    return { message: 'Attachment deleted successfully.', data };
   }
 }

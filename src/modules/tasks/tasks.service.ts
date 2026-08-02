@@ -7,11 +7,13 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
-import { Task } from './entities/task.entity';
+import { randomUUID } from 'crypto';
+import { Task, ApiAttachment, ApiUserSummary } from './entities/task.entity';
 import { SubTask } from './entities/subtask.entity';
 import { TaskComment } from './entities/task-comment.entity';
 import { TimeLog } from './entities/time-log.entity';
 import { ActivitiesService } from '@modules/activities/activities.service';
+import { StorageService } from '@shared/providers/storage/storage.service';
 import { TaskStatus } from './enums/task-status.enum';
 import { Project } from '@modules/projects/entities/project.entity';
 import { ProjectMember } from '@modules/projects/entities/project-member.entity';
@@ -68,6 +70,7 @@ export class TasksService {
     private activitiesService: ActivitiesService,
     private readonly notificationsService: NotificationsService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly storageService: StorageService,
   ) {}
 
   // ─── Helpers ───────────────────────────────────────────────────────────
@@ -851,6 +854,148 @@ export class TasksService {
     });
     if (!timeLog) throw new NotFoundException('Time log not found');
 
-    await this.timeLogRepo.delete({ id: timeLogId });
+    await this.taskRepo.delete({ id: timeLogId });
+  }
+
+  // ─── Attachments ───────────────────────────────────────────────────────
+
+  async uploadAttachments(
+    taskId: string,
+    userId: string,
+    files: Express.Multer.File[],
+  ) {
+    if (!files || files.length === 0) {
+      throw new BadRequestException('No files provided.');
+    }
+    if (files.length > 5) {
+      throw new BadRequestException('Maximum 5 files can be uploaded at a time.');
+    }
+
+    const task = await this.taskRepo.findOne({
+      where: { id: taskId },
+      relations: { project: true },
+    });
+    if (!task) throw new NotFoundException('Task not found');
+
+    const uploader = await this.userRepo.findOne({ where: { id: userId } });
+    if (!uploader) throw new NotFoundException('User not found');
+
+    const uploaderSummary: ApiUserSummary = {
+      id: uploader.id,
+      email: uploader.email,
+      firstName: uploader.firstName,
+      lastName: uploader.lastName,
+      avatarUrl: uploader.avatarUrl || null,
+    };
+
+    const nowIso = new Date().toISOString();
+
+    const uploadPromises = files.map(async (file) => {
+      const { publicUrl } = await this.storageService.uploadAttachment(
+        taskId,
+        file.buffer,
+        file.mimetype,
+        file.originalname,
+      );
+
+      const attachment: ApiAttachment = {
+        id: randomUUID(),
+        fileName: file.originalname,
+        fileUrl: publicUrl,
+        mimeType: file.mimetype,
+        size: file.size,
+        uploadedBy: uploaderSummary,
+        created_at: nowIso,
+      };
+
+      return attachment;
+    });
+
+    const newAttachments = await Promise.all(uploadPromises);
+
+    task.attachments = [...(task.attachments || []), ...newAttachments];
+
+    const updatedTask = await this.taskRepo.save(task);
+
+    // Record activity
+    await this.activitiesService.logActivity(
+      userId,
+      task.project.id,
+      `added ${newAttachments.length} attachment(s) to task: ${task.title}`,
+      'task',
+      task.id,
+    );
+
+    // Realtime event
+    const payload: TaskUpdatedPayload = {
+      projectId: task.project.id,
+      task: mapTaskToApiTaskSummary(updatedTask),
+    };
+    this.eventEmitter.emit(
+      DOMAIN_EVENTS.TASK.UPDATED,
+      new TaskUpdatedEvent(payload),
+    );
+
+    return {
+      newAttachments,
+      allAttachments: updatedTask.attachments,
+      taskId: updatedTask.id,
+      attachmentsCount: updatedTask.attachments.length,
+    };
+  }
+
+  async deleteAttachment(
+    taskId: string,
+    attachmentId: string,
+    userId: string,
+  ) {
+    const task = await this.taskRepo.findOne({
+      where: { id: taskId },
+      relations: { project: true },
+    });
+    if (!task) throw new NotFoundException('Task not found');
+
+    const attachments = task.attachments || [];
+    const targetIndex = attachments.findIndex((a) => a.id === attachmentId);
+
+    if (targetIndex === -1) {
+      throw new NotFoundException('Attachment not found');
+    }
+
+    const [targetAttachment] = attachments.splice(targetIndex, 1);
+
+    // Delete file from Supabase storage
+    if (targetAttachment.fileUrl) {
+      await this.storageService.deleteAttachment(targetAttachment.fileUrl);
+    }
+
+    task.attachments = attachments;
+    const updatedTask = await this.taskRepo.save(task);
+
+    // Record activity
+    await this.activitiesService.logActivity(
+      userId,
+      task.project.id,
+      `deleted attachment "${targetAttachment.fileName}" from task: ${task.title}`,
+      'task',
+      task.id,
+    );
+
+    // Realtime event
+    const payload: TaskUpdatedPayload = {
+      projectId: task.project.id,
+      task: mapTaskToApiTaskSummary(updatedTask),
+    };
+    this.eventEmitter.emit(
+      DOMAIN_EVENTS.TASK.UPDATED,
+      new TaskUpdatedEvent(payload),
+    );
+
+    return {
+      deletedAttachment: targetAttachment,
+      remainingAttachments: updatedTask.attachments,
+      taskId: updatedTask.id,
+      attachmentsCount: updatedTask.attachments.length,
+    };
   }
 }

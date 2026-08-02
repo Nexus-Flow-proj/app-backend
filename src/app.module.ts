@@ -21,6 +21,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { AIModule } from './modules/ai/ai.module';
+import { StorageModule } from '@shared/providers/storage/storage.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { AIModule } from './modules/ai/ai.module';
       },
     }),
     EventEmitterModule.forRoot(),
+    StorageModule,
     DatabaseModule,
     AuthModule,
     UsersModule,

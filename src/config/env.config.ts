@@ -10,6 +10,8 @@ export interface EnvConfig {
   csrfTokenCookieMaxAge: number;
   geminiApiKey: string;
   openrouterApiKey: string;
+  supabaseUrl: string;
+  supabaseServiceRoleKey: string;
 }
 
 export default registerAs('env', () => ({
@@ -32,4 +34,6 @@ export default registerAs('env', () => ({
   ),
   geminiApiKey: process.env.GEMINI_API_KEY || '',
   openrouterApiKey: process.env.OPENROUTER_API_KEY || '',
+  supabaseUrl: process.env.SUPABASE_URL || '',
+  supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
 }));
