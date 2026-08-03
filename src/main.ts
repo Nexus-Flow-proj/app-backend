@@ -6,6 +6,7 @@ import { ConfigService } from '@nestjs/config';
 import { ValidationPipe } from '@nestjs/common';
 import { ApiResponseInterceptor } from '@shared/interceptors/api-response.interceptor';
 import { ApiExceptionFilter } from '@shared/filters/api-exception.filter';
+import { SocketIoAdapter } from '@shared/adapters/socket-io.adapter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -33,6 +34,7 @@ async function bootstrap() {
   app.useGlobalInterceptors(new ApiResponseInterceptor());
   app.useGlobalFilters(new ApiExceptionFilter());
   app.setGlobalPrefix('api');
+  app.useWebSocketAdapter(new SocketIoAdapter(app));
   await app.listen(port ?? 3000);
 }
 void bootstrap();
