@@ -244,39 +244,38 @@ export class AuthService {
     });
   }
 
-  async loginWithGoogle(dto: GoogleUserDto): Promise<GoogleAuthResult> {
-    // 1. Try finding by googleId
-    let user = await this.userRepository.findOne({
-      where: { googleId: dto.googleId },
+  private async handleGoogleAuth(
+    dto: GoogleUserDto,
+    flow: GoogleAuthFlow,
+  ): Promise<GoogleAuthResult> {
+    // 1. Single DB query lookup by googleId OR email
+    const existingUser = await this.userRepository.findOne({
+      where: [{ googleId: dto.googleId }, { email: dto.email }],
     });
 
-    if (user) {
-      return {
-        ok: true,
-        flow: 'login',
-        user,
-      };
-    }
+    if (existingUser) {
+      let isModified = false;
 
-    // 2. Try finding by email (account created via standard email signup, link googleId)
-    user = await this.userRepository.findOne({
-      where: { email: dto.email },
-    });
-
-    if (user) {
-      user.googleId = dto.googleId;
-      if (!user.avatarUrl && dto.avatarUrl) {
-        user.avatarUrl = dto.avatarUrl;
+      // Link googleId if account was created via standard email signup
+      if (!existingUser.googleId) {
+        existingUser.googleId = dto.googleId;
+        isModified = true;
       }
-      const savedUser = await this.userRepository.save(user);
-      return {
-        ok: true,
-        flow: 'login',
-        user: savedUser,
-      };
+
+      // Fill in avatarUrl if user has no avatar set
+      if (!existingUser.avatarUrl && dto.avatarUrl) {
+        existingUser.avatarUrl = dto.avatarUrl;
+        isModified = true;
+      }
+
+      const user = isModified
+        ? await this.userRepository.save(existingUser)
+        : existingUser;
+
+      return { ok: true, flow, user };
     }
 
-    // 3. User does not exist at all -> Automatically sign them up!
+    // 2. User does not exist -> Create new user
     const newUser = this.userRepository.create({
       googleId: dto.googleId,
       email: dto.email,
@@ -287,61 +286,15 @@ export class AuthService {
 
     const savedUser = await this.userRepository.save(newUser);
 
-    return {
-      ok: true,
-      flow: 'login',
-      user: savedUser,
-    };
+    return { ok: true, flow, user: savedUser };
+  }
+
+  async loginWithGoogle(dto: GoogleUserDto): Promise<GoogleAuthResult> {
+    return this.handleGoogleAuth(dto, 'login');
   }
 
   async signupWithGoogle(dto: GoogleUserDto): Promise<GoogleAuthResult> {
-    // 1. Check if user already exists by googleId
-    let user = await this.userRepository.findOne({
-      where: { googleId: dto.googleId },
-    });
-
-    if (user) {
-      return {
-        ok: true,
-        flow: 'signup',
-        user,
-      };
-    }
-
-    // 2. Check if user exists by email (link googleId)
-    user = await this.userRepository.findOne({
-      where: { email: dto.email },
-    });
-
-    if (user) {
-      user.googleId = dto.googleId;
-      if (!user.avatarUrl && dto.avatarUrl) {
-        user.avatarUrl = dto.avatarUrl;
-      }
-      const savedUser = await this.userRepository.save(user);
-      return {
-        ok: true,
-        flow: 'signup',
-        user: savedUser,
-      };
-    }
-
-    // 3. Create new user
-    const newUser = this.userRepository.create({
-      googleId: dto.googleId,
-      email: dto.email,
-      firstName: dto.firstName || 'User',
-      lastName: dto.lastName || '',
-      avatarUrl: dto.avatarUrl ?? undefined,
-    });
-
-    const savedUser = await this.userRepository.save(newUser);
-
-    return {
-      ok: true,
-      flow: 'signup',
-      user: savedUser,
-    };
+    return this.handleGoogleAuth(dto, 'signup');
   }
 
   async getMe(userId: string): Promise<UserResponseDto> {
