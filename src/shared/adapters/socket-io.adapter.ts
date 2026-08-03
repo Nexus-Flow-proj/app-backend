@@ -21,6 +21,7 @@ export class SocketIoAdapter extends IoAdapter {
         methods: ['GET', 'POST'],
       },
     });
+
     return server;
   }
 }
