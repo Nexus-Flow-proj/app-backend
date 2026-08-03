@@ -38,20 +38,17 @@ export function setAuthCookies(
   res.cookie(
     'access_token',
     tokens.accessToken,
-    getCookieOptions(cookieMaxAgeConfig.accessTokenCookieMaxAge),
+    getCookieOptions(cookieMaxAgeConfig.accessTokenCookieMaxAge, '/api/auth'),
   );
 
   res.cookie(
     'refresh_token',
     tokens.refreshToken,
-    getCookieOptions(
-      cookieMaxAgeConfig.refreshTokenCookieMaxAge,
-      '/api/auth',
-    ),
+    getCookieOptions(cookieMaxAgeConfig.refreshTokenCookieMaxAge, '/api/auth'),
   );
 
   res.cookie('csrf_token', tokens.csrfToken, {
-    ...getCookieOptions(cookieMaxAgeConfig.csrfTokenCookieMaxAge),
+    ...getCookieOptions(cookieMaxAgeConfig.csrfTokenCookieMaxAge, '/api/auth'),
     httpOnly: false,
   });
 }
@@ -63,9 +60,9 @@ export function clearAuthCookies(res: Response): void {
     sameSite: isProd ? ('none' as const) : ('lax' as const),
   };
 
-  res.clearCookie('access_token', cookieOptions);
+  res.clearCookie('access_token', { ...cookieOptions, path: '/api/auth' });
   res.clearCookie('refresh_token', { ...cookieOptions, path: '/api/auth' });
-  res.clearCookie('csrf_token', cookieOptions);
+  res.clearCookie('csrf_token', { ...cookieOptions, path: '/api/auth' });
 }
 
 export function parseCookie(cookieHeader: string): RequestCookies {
