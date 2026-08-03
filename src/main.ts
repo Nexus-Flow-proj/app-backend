@@ -14,11 +14,10 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
   const port = configService.get<number>('env.port');
   const frontendUrl = configService.get<string>('env.frontendUrl');
-  const allowedOrigins = [frontendUrl, 'http://localhost:3000'];
 
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
   app.enableCors({
-    origin: allowedOrigins,
+    origin: frontendUrl,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
     allowedHeaders: ['Content-Type', 'x-csrf-token', 'Authorization'],
