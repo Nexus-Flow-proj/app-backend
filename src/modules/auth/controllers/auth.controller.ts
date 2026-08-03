@@ -53,11 +53,15 @@ export class AuthController {
     const { user, accessToken, refreshToken, csrfToken } =
       await this.authService.signUp(dto, ip);
 
-    setAuthCookies(res, { accessToken, refreshToken, csrfToken }, this.getCookieMaxAgeConfig());
+    setAuthCookies(
+      res,
+      { accessToken, refreshToken, csrfToken },
+      this.getCookieMaxAgeConfig(),
+    );
 
     return {
       message: 'Account registered successfully.',
-      data: { user },
+      data: { user, csrfToken },
     };
   }
 
@@ -72,11 +76,15 @@ export class AuthController {
     const { user, accessToken, refreshToken, csrfToken } =
       await this.authService.login(dto, ip);
 
-    setAuthCookies(res, { accessToken, refreshToken, csrfToken }, this.getCookieMaxAgeConfig());
+    setAuthCookies(
+      res,
+      { accessToken, refreshToken, csrfToken },
+      this.getCookieMaxAgeConfig(),
+    );
 
     return {
       message: 'Login successful.',
-      data: { user },
+      data: { user, csrfToken },
     };
   }
 
@@ -172,8 +180,7 @@ export class AuthController {
     const frontendUrl = this.configService.get<string>('env.frontendUrl');
 
     if (!result.ok || !result.user) {
-      const redirectPath =
-        result.flow === 'signup' ? '/signup' : '/login';
+      const redirectPath = result.flow === 'signup' ? '/signup' : '/login';
       const errorMessage = encodeURIComponent(
         result.message ?? 'Google authentication failed.',
       );
@@ -185,7 +192,11 @@ export class AuthController {
     const { accessToken, refreshToken, csrfToken } =
       await this.authService.googleLogin(result.user, ip);
 
-    setAuthCookies(res, { accessToken, refreshToken, csrfToken }, this.getCookieMaxAgeConfig());
+    setAuthCookies(
+      res,
+      { accessToken, refreshToken, csrfToken },
+      this.getCookieMaxAgeConfig(),
+    );
     res.redirect(`${frontendUrl}/dashboard`);
   }
 }

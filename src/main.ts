@@ -20,7 +20,8 @@ async function bootstrap() {
     origin: frontendUrl,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'x-csrf-token'],
+    allowedHeaders: ['Content-Type', 'x-csrf-token', 'Authorization'],
+    exposedHeaders: ['x-csrf-token'],
   });
 
   app.use(cookieParser());
