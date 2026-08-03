@@ -17,14 +17,31 @@ export class SocketAuthService {
   ) {}
 
   async authenticate(socket: Socket) {
-    const rawCookie = socket.handshake.headers.cookie;
+    let token: string | undefined;
 
-    if (!rawCookie) {
-      throw new UnauthorizedException('Missing cookies');
+    // 1. Try extracting token from cookies
+    const rawCookie = socket.handshake.headers.cookie;
+    if (rawCookie) {
+      const cookies = parseCookie(rawCookie);
+      token = cookies.access_token;
     }
 
-    const cookies = parseCookie(rawCookie);
-    const token = cookies.access_token;
+    // 2. Fallback: Try extracting token from handshake auth object (e.g. io(url, { auth: { token } }))
+    if (!token && socket.handshake.auth) {
+      const authObj = socket.handshake.auth as Record<string, unknown>;
+      token =
+        (authObj.token as string | undefined) ||
+        (authObj.access_token as string | undefined) ||
+        (authObj.authorization as string | undefined);
+    }
+
+    // 3. Fallback: Try extracting token from Authorization header (Bearer token)
+    if (!token && socket.handshake.headers.authorization) {
+      const authHeader = socket.handshake.headers.authorization;
+      if (authHeader.startsWith('Bearer ')) {
+        token = authHeader.substring(7);
+      }
+    }
 
     if (!token) {
       throw new UnauthorizedException('Missing access token');
