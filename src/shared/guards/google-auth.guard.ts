@@ -7,14 +7,16 @@ import { Request } from 'express';
 export class GoogleAuthGuard extends AuthGuard('google') {
   getAuthenticateOptions(context: ExecutionContext) {
     const req = context.switchToHttp().getRequest<Request>();
+    const callbackURL = `${req.protocol}://${req.get('host')}/api/auth/google/callback`;
+
     if (req.path.includes('/google/signup')) {
-      return { state: 'signup' };
+      return { state: 'signup', callbackURL };
     }
 
     if (req.path.includes('/google/login')) {
-      return { state: 'login' };
+      return { state: 'login', callbackURL };
     }
 
-    return {};
+    return { callbackURL };
   }
 }
