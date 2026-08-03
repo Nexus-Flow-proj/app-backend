@@ -873,7 +873,14 @@ export class TasksService {
 
     const task = await this.taskRepo.findOne({
       where: { id: taskId },
-      relations: { project: true },
+      relations: {
+        project: true,
+        createdBy: true,
+        assignee: true,
+        dependencies: true,
+        subtasks: true,
+        boardColumn: true,
+      },
     });
     if (!task) throw new NotFoundException('Task not found');
 
@@ -951,7 +958,14 @@ export class TasksService {
   ) {
     const task = await this.taskRepo.findOne({
       where: { id: taskId },
-      relations: { project: true },
+      relations: {
+        project: true,
+        createdBy: true,
+        assignee: true,
+        dependencies: true,
+        subtasks: true,
+        boardColumn: true,
+      },
     });
     if (!task) throw new NotFoundException('Task not found');
 
