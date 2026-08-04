@@ -479,6 +479,112 @@ ${JSON.stringify(responseSchema)}
     };
   }
 
+  getAssigneeRecommendationSchema() {
+    return {
+      type: SchemaType.OBJECT,
+      properties: {
+        recommendedUserId: { type: SchemaType.STRING },
+        recommendedUserName: { type: SchemaType.STRING },
+        confidenceScore: { type: SchemaType.NUMBER },
+        explanation: { type: SchemaType.STRING },
+      },
+      required: [
+        'recommendedUserId',
+        'recommendedUserName',
+        'confidenceScore',
+        'explanation',
+      ],
+    };
+  }
+
+  getTaskBreakdownSchema() {
+    return {
+      type: SchemaType.OBJECT,
+      properties: {
+        subtasks: {
+          type: SchemaType.ARRAY,
+          items: {
+            type: SchemaType.OBJECT,
+            properties: {
+              title: { type: SchemaType.STRING },
+              sortOrder: { type: SchemaType.NUMBER },
+            },
+            required: ['title', 'sortOrder'],
+          },
+        },
+      },
+      required: ['subtasks'],
+    };
+  }
+
+  getGeneratedDescriptionSchema() {
+    return {
+      type: SchemaType.OBJECT,
+      properties: {
+        description: { type: SchemaType.STRING },
+        acceptanceCriteria: {
+          type: SchemaType.ARRAY,
+          items: { type: SchemaType.STRING },
+        },
+      },
+      required: ['description', 'acceptanceCriteria'],
+    };
+  }
+
+  getProjectOverviewSchema() {
+    return {
+      type: SchemaType.OBJECT,
+      properties: {
+        statusSummary: {
+          type: SchemaType.STRING,
+          description:
+            'High-level summary of the overall project health and current stage progress.',
+        },
+        whoIsDoingWhat: {
+          type: SchemaType.STRING,
+          description:
+            'A concise breakdown of current team member assignments and active workloads.',
+        },
+        remainingTasksSummary: {
+          type: SchemaType.STRING,
+          description:
+            'Overview of tasks left to complete, key backlog items, and pending milestones.',
+        },
+        bottlenecks: {
+          type: SchemaType.ARRAY,
+          items: { type: SchemaType.STRING },
+          description:
+            'Key blockers, stalled stages, or overdue tasks impacting momentum.',
+        },
+        workloadWarnings: {
+          type: SchemaType.ARRAY,
+          items: { type: SchemaType.STRING },
+          description:
+            'Warnings about team overload, unassigned high-priority tasks, or missing assignees.',
+        },
+      },
+      required: [
+        'statusSummary',
+        'whoIsDoingWhat',
+        'remainingTasksSummary',
+        'bottlenecks',
+        'workloadWarnings',
+      ],
+    };
+  }
+
+  getDashboardSummarySchema() {
+    return {
+      type: SchemaType.OBJECT,
+      properties: {
+        headline: { type: SchemaType.STRING },
+        quickInsight: { type: SchemaType.STRING },
+        focusRecommendation: { type: SchemaType.STRING },
+      },
+      required: ['headline', 'quickInsight', 'focusRecommendation'],
+    };
+  }
+
   private getMockOnboardingPlan(prompt: string): Record<string, any> {
     return {
       projectSummary: `Plan based on request: "${prompt}". This includes a setup layout.`,

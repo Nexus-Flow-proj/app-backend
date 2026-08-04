@@ -16,6 +16,17 @@ import { WorkshopObject } from '@modules/canvas/entities/workshop-object.entity'
 import { WorkshopConnection } from '@modules/canvas/entities/workshop-connection.entity';
 import { WorkshopStateSerializer } from './workshop-state-serializer';
 import { WorkshopCanvasService } from '@modules/canvas/services/workshop-canvas.service';
+import {
+  AssigneeRecommendationResponse,
+  DashboardSummaryResponse,
+  GeneratedDescriptionResponse,
+  ProjectOverviewSummaryResponse,
+  TaskBreakdownResponse,
+} from '../dtos/ai-task.dto';
+import { Task } from '@modules/tasks/entities/task.entity';
+import { Project } from '@modules/projects/entities/project.entity';
+import { ProjectMember } from '@modules/projects/entities/project-member.entity';
+import { TaskStatus } from '@modules/tasks/enums/task-status.enum';
 
 @Injectable()
 export class AIService {
@@ -35,6 +46,12 @@ export class AIService {
     private readonly workshopObjectRepo: Repository<WorkshopObject>,
     @InjectRepository(WorkshopConnection)
     private readonly workshopConnectionRepo: Repository<WorkshopConnection>,
+    @InjectRepository(Task)
+    private readonly tasksRepo: Repository<Task>,
+    @InjectRepository(Project)
+    private readonly projectsRepo: Repository<Project>,
+    @InjectRepository(ProjectMember)
+    private readonly projectMembersRepo: Repository<ProjectMember>,
     private readonly geminiService: GeminiService,
     private readonly realtimeService: RealtimeService,
     private readonly workshopCanvasService: WorkshopCanvasService,
@@ -74,16 +91,330 @@ export class AIService {
     });
 
     // 2. Run generation asynchronously
-    this.runOnboardingPlanGeneration(userId, generationId, dto).catch(
-      (err) => {
-        this.logger.error(
-          `Onboarding plan generation failed: ${generationId}`,
-          err,
-        );
-      },
-    );
+    this.runOnboardingPlanGeneration(userId, generationId, dto).catch((err) => {
+      this.logger.error(
+        `Onboarding plan generation failed: ${generationId}`,
+        err,
+      );
+    });
 
     return { generationId, status: AIGenerationStatus.PENDING };
+  }
+
+  async recommendTaskAssignee(
+    projectId: string,
+    taskId: string,
+    onChunk: (chunk: string) => void = () => {},
+  ): Promise<AssigneeRecommendationResponse> {
+    const task = await this.tasksRepo.findOne({
+      where: { id: taskId, project: { id: projectId } },
+      relations: { subtasks: true, comments: true },
+    });
+
+    if (!task) {
+      throw new NotFoundException('Task not found in the specified project!');
+    }
+
+    const members = await this.projectMembersRepo.find({
+      where: { project: { id: projectId } },
+      relations: { user: true, role: true },
+    });
+
+    const activeTaskCounts = await this.tasksRepo
+      .createQueryBuilder('task')
+      .select('task.assignee_id', 'userId')
+      .addSelect('COUNT(task.id)', 'activeCount')
+      .where('task.project_id = :projectId', { projectId })
+      .andWhere('task.status IN (:...statuses)', {
+        statuses: [
+          TaskStatus.IN_PROGRESS,
+          TaskStatus.IN_REVIEW,
+          TaskStatus.TODO,
+        ],
+      })
+      .groupBy('task.assignee_id')
+      .getRawMany();
+
+    const workloadMap = new Map<string, number>();
+    activeTaskCounts.forEach((item) => {
+      if (item.userId)
+        workloadMap.set(item.userId, parseInt(item.activeCount, 10));
+    });
+
+    const memberContext = members.map((m) => ({
+      userId: m.user.id,
+      name:
+        `${m.user.firstName || ''} ${m.user.lastName || ''}`.trim() ||
+        m.user.email,
+      role: m.role.name,
+      activeTasks: workloadMap.get(m.user.id) || 0,
+    }));
+
+    const systemInstruction =
+      'You are an expert Agile Workload and Assignment Planner. Analyze team members and select the best assignee for the given task based on role fit and current workload. Return JSON only matching the schema.';
+
+    const prompt = `Task Title: "${task.title}"
+Description: "${task.description || 'N/A'}"
+Priority: ${task.priority}
+Type: ${task.type}
+
+Team Members & Workloads:
+${JSON.stringify(memberContext, null, 2)}`;
+
+    const responseSchema = this.geminiService.getAssigneeRecommendationSchema();
+
+    const result = await this.geminiService.generateContentStream(
+      systemInstruction,
+      prompt,
+      responseSchema,
+      onChunk,
+    );
+
+    return result as AssigneeRecommendationResponse;
+  }
+
+  async breakTasksIntoSubtasks(
+    projectId: string,
+    taskId: string,
+    onChunk: (chunk: string) => void = () => {},
+  ): Promise<TaskBreakdownResponse> {
+    const task = await this.tasksRepo.findOne({
+      where: { id: taskId, project: { id: projectId } },
+      relations: { subtasks: true },
+    });
+
+    if (!task) {
+      throw new NotFoundException('Task with not found in the current project');
+    }
+
+    const existingSubtaskTitles = task.subtasks?.map((st) => st.title) || [];
+
+    const systemInstruction =
+      'You are a Technical Project Lead. Decompose the task into 3 to 6 actionable subtasks. Ensure subtasks are logically ordered using sortOrder (1, 2, 3...). Return JSON matching the schema.';
+
+    const prompt = `Task Title: "${task.title}"
+Description: "${task.description || 'N/A'}"
+Type: ${task.type}
+Existing Subtasks: ${JSON.stringify(existingSubtaskTitles)}`;
+
+    const responseSchema = this.geminiService.getTaskBreakdownSchema();
+
+    const result = await this.geminiService.generateContentStream(
+      systemInstruction,
+      prompt,
+      responseSchema,
+      onChunk,
+    );
+
+    return result as TaskBreakdownResponse;
+  }
+
+  async generateTaskDescription(
+    projectId: string,
+    taskId: string,
+    onChunk: (chunk: string) => void = () => {},
+  ): Promise<GeneratedDescriptionResponse> {
+    const task = await this.tasksRepo.findOne({
+      where: { id: taskId, project: { id: projectId } },
+      relations: { project: true, boardColumn: true },
+    });
+
+    if (!task) {
+      throw new NotFoundException('Task not found in specified project');
+    }
+
+    const systemInstruction =
+      'You are a Senior Technical Writer and Product Owner. Draft a comprehensive, well-structured task description in Markdown format along with bulletproof acceptance criteria for developers. Return valid JSON matching the schema.';
+
+    const prompt = `Project Name: "${task.project?.name || 'General Workspace'}"
+Project Description: "${task.project?.description || 'N/A'}"
+
+Task Context:
+- Title: "${task.title}"
+- Current Column: "${task.boardColumn?.name || 'Backlog'}"
+- Priority: "${task.priority}"
+- Type: "${task.type}"
+- Existing Draft Description / Notes: "${task.description || 'None'}"`;
+
+    const responseSchema = this.geminiService.getGeneratedDescriptionSchema();
+
+    const result = await this.geminiService.generateContentStream(
+      systemInstruction,
+      prompt,
+      responseSchema,
+      onChunk,
+    );
+
+    return result as GeneratedDescriptionResponse;
+  }
+
+  // src/modules/ai/ai.service.ts
+
+  /**
+   * 4. Project Overview AI Summary (State of the Project, Member Workloads & Remaining Tasks)
+   */
+  async getProjectOverviewSummary(
+    projectId: string,
+    onChunk: (chunk: string) => void = () => {},
+  ): Promise<ProjectOverviewSummaryResponse> {
+    const project = await this.projectsRepo.findOne({
+      where: { id: projectId },
+    });
+    if (!project) {
+      throw new NotFoundException('Project not found');
+    }
+
+    const tasks = await this.tasksRepo.find({
+      where: { project: { id: projectId } },
+      relations: { assignee: true, boardColumn: true },
+    });
+
+    const now = new Date();
+
+    const stageBreakdown: Record<string, string[]> = {};
+
+    const teamWorkloadMap = new Map<
+      string,
+      {
+        memberName: string;
+        tasks: { title: string; status: string; priority: string }[];
+      }
+    >();
+
+    const overdueTasks: {
+      title: string;
+      assignee: string;
+      priority: string;
+    }[] = [];
+    const unassignedTasks: {
+      title: string;
+      priority: string;
+      stage: string;
+    }[] = [];
+
+    tasks.forEach((t) => {
+      const stageName = t.boardColumn?.name || t.status;
+      const assigneeName = t.assignee
+        ? `${t.assignee.firstName || ''} ${t.assignee.lastName || ''}`.trim() ||
+          t.assignee.email
+        : 'Unassigned';
+
+      if (!stageBreakdown[stageName]) {
+        stageBreakdown[stageName] = [];
+      }
+      stageBreakdown[stageName].push(`"${t.title}" (${t.priority})`);
+
+      if (t.assignee) {
+        if (!teamWorkloadMap.has(t.assignee.id)) {
+          teamWorkloadMap.set(t.assignee.id, {
+            memberName: assigneeName,
+            tasks: [],
+          });
+        }
+        teamWorkloadMap.get(t.assignee.id)!.tasks.push({
+          title: t.title,
+          status: stageName,
+          priority: t.priority,
+        });
+      } else {
+        unassignedTasks.push({
+          title: t.title,
+          priority: t.priority,
+          stage: stageName,
+        });
+      }
+
+      if (
+        t.deadline &&
+        new Date(t.deadline) < now &&
+        t.status !== TaskStatus.DONE
+      ) {
+        overdueTasks.push({
+          title: t.title,
+          assignee: assigneeName,
+          priority: t.priority,
+        });
+      }
+    });
+
+    const context = {
+      projectName: project.name,
+      projectDescription: project.description || 'N/A',
+      totalTaskCount: tasks.length,
+      boardStageSummary: stageBreakdown,
+      whoIsDoingWhat: Array.from(teamWorkloadMap.values()),
+      unassignedBacklog: unassignedTasks,
+      overdueTasks,
+    };
+
+    const systemInstruction =
+      'You are an Executive Agile Project Manager. Review the project breakdown and synthesize a brief executive report covering: current project state, who is working on what, progress on active stages, tasks left to complete, and potential workload bottlenecks or risks. Output valid JSON matching the schema.';
+
+    const prompt = `Project Live Snapshot:
+${JSON.stringify(context, null, 2)}`;
+
+    const responseSchema = this.geminiService.getProjectOverviewSchema();
+
+    const result = await this.geminiService.generateContentStream(
+      systemInstruction,
+      prompt,
+      responseSchema,
+      onChunk,
+    );
+
+    return result as ProjectOverviewSummaryResponse;
+  }
+
+  async getDashboardSummary(
+    userId: string,
+    onChunk: (chunk: string) => void = () => {},
+  ): Promise<DashboardSummaryResponse> {
+    const now = new Date();
+
+    const userTasks = await this.tasksRepo.find({
+      where: { assignee: { id: userId } },
+      relations: { project: true },
+    });
+
+    const overdue = userTasks.filter(
+      (t) =>
+        t.deadline &&
+        new Date(t.deadline) < now &&
+        t.status !== TaskStatus.DONE,
+    );
+
+    const inProgress = userTasks.filter(
+      (t) => t.status === TaskStatus.IN_PROGRESS,
+    );
+
+    const context = {
+      totalAssigned: userTasks.length,
+      inProgressCount: inProgress.length,
+      overdueCount: overdue.length,
+      overdueTaskTitles: overdue.map((t) => t.title),
+      topActiveTasks: inProgress.slice(0, 3).map((t) => ({
+        title: t.title,
+        projectName: t.project?.name,
+        deadline: t.deadline,
+      })),
+    };
+
+    const systemInstruction =
+      'You are a Personal Engineering Coach. Provide a brief daily focus check-in for the user based on their active workload. Output JSON matching the schema.';
+
+    const prompt = `User Workload Snapshot:
+${JSON.stringify(context, null, 2)}`;
+
+    const responseSchema = this.geminiService.getDashboardSummarySchema();
+
+    const result = await this.geminiService.generateContentStream(
+      systemInstruction,
+      prompt,
+      responseSchema,
+      onChunk,
+    );
+
+    return result as DashboardSummaryResponse;
   }
 
   private async runOnboardingPlanGeneration(
@@ -164,7 +495,10 @@ Conversation History: ${JSON.stringify(formattedHistory)}.`;
         },
       );
 
-      const normalizedResult = this.normalizeOnboardingPlan(result, projectInfo);
+      const normalizedResult = this.normalizeOnboardingPlan(
+        result,
+        projectInfo,
+      );
 
       // Save user prompt & assistant response in AIChatMessage
       await this.messageRepo.save([
@@ -184,10 +518,11 @@ Conversation History: ${JSON.stringify(formattedHistory)}.`;
 
       // Persist AI plan directly into Workshop DB entities with auto-layout.
       // The frontend reads GET /workshop/:draftId — no coordinate posting needed.
-      const workshopSnapshot = await this.workshopCanvasService.applyAIPlanToWorkshop(
-        dto.draftId,
-        normalizedResult,
-      );
+      const workshopSnapshot =
+        await this.workshopCanvasService.applyAIPlanToWorkshop(
+          dto.draftId,
+          normalizedResult,
+        );
 
       // Save completed job
       await this.jobRepo.update(generationId, {
@@ -261,7 +596,6 @@ Conversation History: ${JSON.stringify(formattedHistory)}.`;
     });
 
     try {
-      // Fetch persistent history (capped to MAX_HISTORY_MESSAGES)
       const chatHistory = await this.messageRepo.find({
         where: { projectId },
         order: { createdAt: 'DESC' },
@@ -294,7 +628,6 @@ Provide suggestions matching the JSON schema.`;
         },
       );
 
-      // Save persistent messages
       await this.messageRepo.save([
         this.messageRepo.create({
           projectId,
@@ -418,8 +751,7 @@ Provide suggestions matching the JSON schema.`;
       const rawTasks = Array.isArray(feat.tasks) ? feat.tasks : [];
 
       const normalizedTasks = rawTasks.map((t: any, tIdx: number) => {
-        const taskName =
-          t.task_name || t.title || t.name || `Task ${tIdx + 1}`;
+        const taskName = t.task_name || t.title || t.name || `Task ${tIdx + 1}`;
 
         const taskDescription =
           t.task_description || t.description || t.details || '';

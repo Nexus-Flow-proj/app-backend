@@ -7,6 +7,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '@shared/guards/jwt-auth.guard';
@@ -107,6 +108,72 @@ export class AIController {
     const data = await this.aiService.getProjectMessages(projectId);
     return {
       message: 'Project AI chat messages retrieved successfully.',
+      data,
+    };
+  }
+
+  @Post('projects/:projectId/tasks/:taskId/ai/assign')
+  @UseGuards(ProjectAuthGuard)
+  @RequirePermission('tasks', 'update')
+  async recommendAssignee(
+    @Param('projectId') projectId: string,
+    @Param('taskId') taskId: string,
+  ) {
+    const data = await this.aiService.recommendTaskAssignee(projectId, taskId);
+    return {
+      message: 'Best candidate has been assigned to the task successfully!',
+      data,
+    };
+  }
+
+  @Post('projects/:projectId/tasks/:taskId/ai/breakdown')
+  @UseGuards(ProjectAuthGuard)
+  @RequirePermission('tasks', 'update')
+  async breakdownTask(
+    @Param('projectId') projectId: string,
+    @Param('taskId') taskId: string,
+  ) {
+    const data = await this.aiService.breakTasksIntoSubtasks(projectId, taskId);
+    return {
+      message: 'Task breakdown was successful!',
+      data,
+    };
+  }
+
+  @Post('projects/:projectId/tasks/:taskId/ai/description')
+  @UseGuards(ProjectAuthGuard)
+  @RequirePermission('tasks', 'update')
+  async generateTaskDescription(
+    @Param('projectId') projectId: string,
+    @Param('taskId') taskId: string,
+  ) {
+    const data = await this.aiService.generateTaskDescription(
+      projectId,
+      taskId,
+    );
+    return {
+      message: 'Task description was generated successfully!',
+      data,
+    };
+  }
+
+  @Get('projects/:projectId/ai/overview-summary')
+  @UseGuards(ProjectAuthGuard)
+  @RequirePermission('project', 'read')
+  async generateProjectOverview(@Param('projectId') projectId: string) {
+    const data = await this.aiService.getProjectOverviewSummary(projectId);
+    return {
+      message: 'Project Overview was generated successfully!',
+      data,
+    };
+  }
+
+  @Get('dashboard/ai/summary')
+  async generateDashboardSummary(@CurrentUser() user: User) {
+    const data = await this.aiService.getDashboardSummary(user.id);
+    console.log(user.id);
+    return {
+      message: 'Dashboard summary was generated successfully!',
       data,
     };
   }

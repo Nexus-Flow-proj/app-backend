@@ -39,10 +39,7 @@ export class UsersController {
   // ─── PATCH /users/me ───────────────────────────────────
   @Patch('me')
   @UseGuards(CsrfGuard)
-  async updateMe(
-    @CurrentUser() user: User,
-    @Body() dto: UpdateUserDto,
-  ) {
+  async updateMe(@CurrentUser() user: User, @Body() dto: UpdateUserDto) {
     const data = await this.usersService.updateMe(user.id, dto);
     return {
       message: 'Profile updated successfully.',

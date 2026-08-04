@@ -13,6 +13,9 @@ import { WorkshopObject } from '../canvas/entities/workshop-object.entity';
 import { WorkshopConnection } from '../canvas/entities/workshop-connection.entity';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { CanvasModule } from '../canvas/canvas.module';
+import { Task } from '@modules/tasks/entities/task.entity';
+import { Project } from '@modules/projects/entities/project.entity';
+import { ProjectMember } from '@modules/projects/entities/project-member.entity';
 
 @Module({
   imports: [
@@ -24,6 +27,9 @@ import { CanvasModule } from '../canvas/canvas.module';
       Workshop,
       WorkshopObject,
       WorkshopConnection,
+      Task,
+      Project,
+      ProjectMember,
     ]),
     ConfigModule,
     RealtimeModule,
