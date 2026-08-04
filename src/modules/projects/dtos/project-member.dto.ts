@@ -50,18 +50,19 @@ export class ProjectMemberDto {
   @Expose()
   avatarUrl!: string | null;
 
-  /** Primary: the UUID of the member's role */
   @Expose()
   roleId!: string;
 
-  /** Primary: full role object */
   @Expose()
   @Type(() => MemberRoleDto)
   role!: MemberRoleDto;
 
-  /** Legacy / optional — kept for backward-compat */
   @Expose()
   roleLabel?: ProjectRole;
+
+  @Expose()
+  @Type(() => Date)
+  lastVisitedAt!: Date | null;
 
   @Expose()
   isAdmin?: boolean;

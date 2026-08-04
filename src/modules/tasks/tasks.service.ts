@@ -623,7 +623,6 @@ export class TasksService {
   async createSubtasks(taskId: string, dto: CreateSubTaskDto, userId: string) {
     const task = await this.getTaskOrFail(taskId);
 
-    // Get current highest sortOrder in DB as a baseline fallback
     const maxQuery = await this.subtaskRepo
       .createQueryBuilder('subtask')
       .select('MAX(subtask.sortOrder)', 'max')

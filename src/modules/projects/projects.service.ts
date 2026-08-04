@@ -358,12 +358,36 @@ export class ProjectsService {
       ? project.members?.find((m) => m.user?.id === userId)
       : undefined;
 
-    return this.toProjectView(
+    let previousVisit: Date | null = null;
+
+    if (currentMember) {
+      previousVisit = currentMember.lastVisitedAt;
+
+      const now = new Date();
+      const ONE_HOUR_MS = 60 * 60 * 1000;
+      const shouldUpdate =
+        !previousVisit ||
+        now.getTime() - new Date(previousVisit).getTime() > ONE_HOUR_MS;
+
+      if (shouldUpdate) {
+        await this.projectMemberRepo.update(currentMember.id, {
+          lastVisitedAt: now,
+        });
+      }
+    }
+
+    const projectDto = this.toProjectView(
       project,
       project.members?.length ?? 0,
       project.admin?.id ?? null,
       currentMember,
     );
+
+    if (projectDto.currentMember) {
+      projectDto.currentMember.lastVisitedAt = previousVisit;
+    }
+
+    return projectDto;
   }
 
   async updateProject(
@@ -477,7 +501,10 @@ export class ProjectsService {
       .join(' ')
       .trim();
     const inviteeName = invitedUser
-      ? [invitedUser.firstName, invitedUser.lastName].filter(Boolean).join(' ').trim()
+      ? [invitedUser.firstName, invitedUser.lastName]
+          .filter(Boolean)
+          .join(' ')
+          .trim()
       : normalizedEmail;
 
     if (invitedUser) {
@@ -997,6 +1024,7 @@ export class ProjectsService {
       title: member.user.title ?? null,
       avatarUrl: member.user.avatarUrl ?? null,
       roleId: role?.id,
+      lastVisitedAt: member.lastVisitedAt ?? null,
       role: role
         ? {
             id: role.id,

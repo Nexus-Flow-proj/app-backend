@@ -29,15 +29,12 @@ export class ProjectMember {
   @JoinColumn({ name: 'user_id' })
   user!: User;
 
-  // @Column({ type: 'enum', enum: ProjectRole, default: ProjectRole.VIEWER })
-  // roleLabel!: ProjectRole;
-
   @ManyToOne(() => ProjectRole, { onDelete: 'RESTRICT', nullable: false })
   @JoinColumn({ name: 'role_id' })
   role!: ProjectRole;
 
-  // @Column({ default: false })
-  // isAdmin!: boolean;
+  @Column({ name: 'last_visited_at', type: 'timestamptz', nullable: true })
+  lastVisitedAt!: Date | null;
 
   @CreateDateColumn({ name: 'joined_at' })
   joinedAt!: Date;
