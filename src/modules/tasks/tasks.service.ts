@@ -297,7 +297,12 @@ export class TasksService {
     dto: CreateTaskDto,
     userId: string,
   ) {
-    const { assigneeId, assignee: assigneeInput, dependencyIds, ...scalarFields } = dto;
+    const {
+      assigneeId,
+      assignee: assigneeInput,
+      dependencyIds,
+      ...scalarFields
+    } = dto;
     const resolvedAssigneeId =
       assigneeInput !== undefined ? assigneeInput : assigneeId;
     const creatorId = userId;
@@ -615,36 +620,52 @@ export class TasksService {
 
   // ─── Subtasks ──────────────────────────────────────────────────────────
 
-  async createSubtask(taskId: string, dto: CreateSubTaskDto, userId: string) {
+  async createSubtasks(taskId: string, dto: CreateSubTaskDto, userId: string) {
     const task = await this.getTaskOrFail(taskId);
 
+    // Get current highest sortOrder in DB as a baseline fallback
     const maxQuery = await this.subtaskRepo
       .createQueryBuilder('subtask')
       .select('MAX(subtask.sortOrder)', 'max')
       .where('subtask.task = :taskId', { taskId: task.id })
       .getRawOne();
 
-    const nextSortOrder = maxQuery?.max != null ? Number(maxQuery.max) + 1 : 1;
+    let currentMaxSort = maxQuery?.max != null ? Number(maxQuery.max) : 0;
 
-    const subtask = this.subtaskRepo.create({
-      title: dto.title,
-      isCompleted: false,
-      task,
-      sortOrder: nextSortOrder,
+    const subtasksToCreate = dto.subtasks.map((item) => {
+      let finalSortOrder: number;
+
+      if (item.sortOrder != null) {
+        finalSortOrder = item.sortOrder;
+        currentMaxSort = Math.max(currentMaxSort, item.sortOrder);
+      } else {
+        currentMaxSort += 1;
+        finalSortOrder = currentMaxSort;
+      }
+
+      return this.subtaskRepo.create({
+        title: item.title,
+        sortOrder: finalSortOrder,
+        isCompleted: false,
+        task,
+      });
     });
 
-    const savedSubtask = await this.subtaskRepo.save(subtask);
+    const savedSubtasks = await this.subtaskRepo.save(subtasksToCreate);
 
-    const payload: SubtaskCreatedPayload = {
-      projectId: task.project.id,
-      taskId: task.id,
-      subtask: mapSubtaskToApiSubtask(savedSubtask),
-    };
-    this.eventEmitter.emit(
-      DOMAIN_EVENTS.SUBTASK.CREATED,
-      new SubtaskCreatedEvent(payload),
-    );
-    return savedSubtask;
+    for (const savedSubtask of savedSubtasks) {
+      const payload: SubtaskCreatedPayload = {
+        projectId: task.project.id,
+        taskId: task.id,
+        subtask: mapSubtaskToApiSubtask(savedSubtask),
+      };
+      this.eventEmitter.emit(
+        DOMAIN_EVENTS.SUBTASK.CREATED,
+        new SubtaskCreatedEvent(payload),
+      );
+    }
+
+    return savedSubtasks;
   }
 
   async updateSubtask(
@@ -868,7 +889,9 @@ export class TasksService {
       throw new BadRequestException('No files provided.');
     }
     if (files.length > 5) {
-      throw new BadRequestException('Maximum 5 files can be uploaded at a time.');
+      throw new BadRequestException(
+        'Maximum 5 files can be uploaded at a time.',
+      );
     }
 
     const task = await this.taskRepo.findOne({
@@ -951,11 +974,7 @@ export class TasksService {
     };
   }
 
-  async deleteAttachment(
-    taskId: string,
-    attachmentId: string,
-    userId: string,
-  ) {
+  async deleteAttachment(taskId: string, attachmentId: string, userId: string) {
     const task = await this.taskRepo.findOne({
       where: { id: taskId },
       relations: {

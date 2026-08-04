@@ -150,8 +150,8 @@ export class TasksController {
     @Body() body: CreateSubTaskDto,
     @CurrentUser() user: User,
   ) {
-    const data = await this.tasksService.createSubtask(taskId, body, user.id);
-    return { message: 'Subtask created successfully.', data };
+    const data = await this.tasksService.createSubtasks(taskId, body, user.id);
+    return { message: 'Subtasks created successfully.', data };
   }
 
   @Patch('tasks/:id/subtasks/:sid')
