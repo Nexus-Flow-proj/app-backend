@@ -112,7 +112,7 @@ export class AIController {
     };
   }
 
-  @Post('projects/:projectId/tasks/:taskId/ai/assign')
+  @Get('projects/:projectId/tasks/:taskId/ai/assign')
   @UseGuards(ProjectAuthGuard)
   @RequirePermission('tasks', 'update')
   async recommendAssignee(
@@ -121,12 +121,12 @@ export class AIController {
   ) {
     const data = await this.aiService.recommendTaskAssignee(projectId, taskId);
     return {
-      message: 'Best candidate has been assigned to the task successfully!',
+      message: 'Task has been matched to the best candidate successfully!',
       data,
     };
   }
 
-  @Post('projects/:projectId/tasks/:taskId/ai/breakdown')
+  @Get('projects/:projectId/tasks/:taskId/ai/breakdown')
   @UseGuards(ProjectAuthGuard)
   @RequirePermission('tasks', 'update')
   async breakdownTask(
@@ -140,7 +140,7 @@ export class AIController {
     };
   }
 
-  @Post('projects/:projectId/tasks/:taskId/ai/description')
+  @Get('projects/:projectId/tasks/:taskId/ai/description')
   @UseGuards(ProjectAuthGuard)
   @RequirePermission('tasks', 'update')
   async generateTaskDescription(

@@ -143,6 +143,7 @@ export class AIService {
 
     const memberContext = members.map((m) => ({
       userId: m.user.id,
+      title: m.user.title,
       name:
         `${m.user.firstName || ''} ${m.user.lastName || ''}`.trim() ||
         m.user.email,
@@ -224,7 +225,7 @@ Existing Subtasks: ${JSON.stringify(existingSubtaskTitles)}`;
     }
 
     const systemInstruction =
-      'You are a Senior Technical Writer and Product Owner. Draft a comprehensive, well-structured task description in Markdown format along with bulletproof acceptance criteria for developers. Return valid JSON matching the schema.';
+      'You are a Senior Technical Writer and Product Owner. Draft a comprehensive, well-structured task description in string format along with brief acceptance criteria for developers. Return valid JSON matching the schema.';
 
     const prompt = `Project Name: "${task.project?.name || 'General Workspace'}"
 Project Description: "${task.project?.description || 'N/A'}"
