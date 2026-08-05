@@ -63,6 +63,10 @@ export class Task {
   @JoinColumn({ name: 'assignee_id' })
   assignee!: User | null;
 
+  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'assigned_by_id' })
+  assignedBy!: User | null;
+
   @Column({ type: 'varchar' })
   title!: string;
 

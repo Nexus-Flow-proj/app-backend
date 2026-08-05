@@ -126,7 +126,7 @@ export class TasksController {
     @Body() body: UpdateTaskDto,
     @CurrentUser() user: User,
   ) {
-    const data = await this.tasksService.updateTask(id, body, user.id);
+    const data = await this.tasksService.updateTask(id, body, user);
     return { message: 'Task updated successfully.', data };
   }
 

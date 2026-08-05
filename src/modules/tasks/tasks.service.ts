@@ -364,6 +364,7 @@ export class TasksService {
       assignee,
       boardColumn,
       dependencies,
+      assignedBy: assignee ? currentUser : null,
       subtasks: [],
       comments: [],
       timeLogs: [],
@@ -427,7 +428,7 @@ export class TasksService {
     return task;
   }
 
-  async updateTask(taskId: string, dto: UpdateTaskDto, userId: string) {
+  async updateTask(taskId: string, dto: UpdateTaskDto, currentUser: User) {
     const task = await this.taskRepo.findOne({
       where: { id: taskId },
       relations: {
@@ -471,6 +472,7 @@ export class TasksService {
           resolvedAssigneeId,
         );
         task.assignee = assignee;
+        task.assignedBy = currentUser;
       }
     }
 
@@ -524,7 +526,7 @@ export class TasksService {
           savedTask.title,
           savedTask.project.id,
           completedRecipientId,
-          userId,
+          currentUser.id,
         );
       }
     }
@@ -536,7 +538,7 @@ export class TasksService {
           savedTask.title,
           savedTask.project.id,
           oldAssigneeId,
-          userId,
+          currentUser.id,
         );
       } else if (!oldAssigneeId && newAssigneeId) {
         await this.createTaskAssignedNotification(
@@ -544,7 +546,7 @@ export class TasksService {
           savedTask.title,
           savedTask.project.id,
           newAssigneeId,
-          userId,
+          currentUser.id,
         );
       } else if (
         oldAssigneeId &&
@@ -556,14 +558,14 @@ export class TasksService {
           savedTask.title,
           savedTask.project.id,
           oldAssigneeId,
-          userId,
+          currentUser.id,
         );
         await this.createTaskAssignedNotification(
           savedTask.id,
           savedTask.title,
           savedTask.project.id,
           newAssigneeId,
-          userId,
+          currentUser.id,
         );
       }
     }
@@ -574,7 +576,7 @@ export class TasksService {
       message = `${action} task: ${savedTask.title}`;
     }
     await this.activitiesService.logActivity(
-      userId,
+      currentUser.id,
       savedTask.project.id,
       message,
       'task',
