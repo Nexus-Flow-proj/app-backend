@@ -91,10 +91,14 @@ export class AuthController {
   @Get('me')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
-  async getMe(@CurrentUser() user: User) {
+  async getMe(@CurrentUser() user: User, @Req() req: Request) {
+    const cookies = req.cookies as RequestCookies;
     return {
       message: 'Current user fetched successfully.',
-      data: { user: await this.authService.getMe(user.id) },
+      data: {
+        user: await this.authService.getMe(user.id),
+        csrfToken: cookies.csrf_token,
+      },
     };
   }
 
@@ -138,7 +142,7 @@ export class AuthController {
     setAuthCookies(res, tokens, this.getCookieMaxAgeConfig());
     return {
       message: 'Token refreshed successfully.',
-      data: {},
+      data: { csrfToken },
     };
   }
 
