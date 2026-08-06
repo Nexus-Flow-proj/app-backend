@@ -47,6 +47,8 @@ export interface TaskDependencySummary {
 
 @Entity('tasks')
 @Index(['project', 'columnOrder'])
+@Index(['boardColumn', 'columnOrder'])
+@Index(['project', 'status'])
 export class Task {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

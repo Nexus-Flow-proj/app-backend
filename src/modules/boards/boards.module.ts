@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { BoardsService } from './boards.service';
 import { BoardsController } from './boards.controller';
 import { Board } from './entities/board.entity';
+import { Project } from '@modules/projects/entities/project.entity';
 import { ProjectMember } from '@modules/projects/entities/project-member.entity';
 import { ProjectRole } from '@modules/projects/entities/project-role.entity';
 import { Task } from '@modules/tasks/entities/task.entity';
@@ -15,6 +16,7 @@ import { ActivitiesModule } from '@modules/activities/activities.module';
   imports: [
     TypeOrmModule.forFeature([
       Board,
+      Project,
       ProjectMember,
       ProjectRole,
       Task,
@@ -29,3 +31,4 @@ import { ActivitiesModule } from '@modules/activities/activities.module';
   exports: [TypeOrmModule],
 })
 export class BoardsModule {}
+

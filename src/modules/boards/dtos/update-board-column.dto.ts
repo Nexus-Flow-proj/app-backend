@@ -4,12 +4,14 @@ import {
   IsNumber,
   IsOptional,
   Min,
+  MaxLength,
 } from 'class-validator';
 
 export class UpdateBoardColumnDto {
   @IsString()
   @IsNotEmpty()
   @IsOptional()
+  @MaxLength(100)
   name?: string;
 
   @IsNumber()
@@ -19,5 +21,7 @@ export class UpdateBoardColumnDto {
 
   @IsString()
   @IsOptional()
+  @MaxLength(20)
   color?: string;
 }
+
