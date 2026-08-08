@@ -21,6 +21,7 @@ export class UsersService {
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
     @InjectRepository(Skill)
+    private readonly skillRepository: Repository<Skill>,
     private readonly storageService: StorageService,
     private readonly dataSource: DataSource,
   ) {}
@@ -127,20 +128,15 @@ export class UsersService {
     if (dto.avatar !== undefined) user.avatarUrl = dto.avatar;
 
     if (dto.skills !== undefined) {
-      const skillNames = dto.skills;
+      const skillNames = dto.skills
+        .map((name) => name.trim())
+        .filter((name) => name.length > 0);
 
-      await this.dataSource.transaction(async (manager) => {
-        await manager.delete(Skill, { user: { id: userId } });
+      await this.skillRepository.delete({ user: { id: userId } });
 
-        const newSkills = skillNames
-          .map((name) => name.trim())
-          .filter((name) => name.length > 0)
-          .map((name) => manager.create(Skill, { name, user }));
-
-        if (newSkills.length > 0) {
-          await manager.save(Skill, newSkills);
-        }
-      });
+      user.skills = skillNames.map((name) =>
+        this.skillRepository.create({ name }),
+      );
     }
 
     await this.userRepository.save(user);
