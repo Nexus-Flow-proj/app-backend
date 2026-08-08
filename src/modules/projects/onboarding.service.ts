@@ -180,8 +180,11 @@ export class OnboardingService {
 
       // 6. Compile Workshop state into Board columns and Task items
       let totalTasks = 0;
-      const boardColumnInfo: Array<{ id: string; name: string; color: string }> =
-        [];
+      const boardColumnInfo: Array<{
+        id: string;
+        name: string;
+        color: string;
+      }> = [];
 
       const sectionFrames = workshopObjects.filter(
         (obj) => obj.type === CanvasObjectType.SECTION_FRAME,
@@ -189,6 +192,12 @@ export class OnboardingService {
       const taskCards = workshopObjects.filter(
         (obj) => obj.type === CanvasObjectType.TASK_CARD,
       );
+
+      // ── Phase 1 setup: maps shared across ALL features for cross-feature dep resolution
+      // Key: lowercased+trimmed task title  Value: saved Task UUID
+      const taskTitleToId = new Map<string, string>();
+      // Key: saved Task UUID  Value: dependency title strings from AI plan
+      const taskDependencyNames = new Map<string, string[]>();
 
       let sortOrderCounter = 0;
       for (const frame of sectionFrames) {
@@ -221,8 +230,12 @@ export class OnboardingService {
         let taskOrderCounter = 0;
         for (const taskObj of childTasks) {
           const taskData = (taskObj.data ?? {}) as Record<string, any>;
-          const rawPriority = String(taskData.priority || 'MEDIUM').toUpperCase();
-          const priority = Object.values(TaskPriority).includes(rawPriority as TaskPriority)
+          const rawPriority = String(
+            taskData.priority || 'MEDIUM',
+          ).toUpperCase();
+          const priority = Object.values(TaskPriority).includes(
+            rawPriority as TaskPriority,
+          )
             ? (rawPriority as TaskPriority)
             : TaskPriority.MEDIUM;
 
@@ -238,8 +251,46 @@ export class OnboardingService {
             columnOrder: taskOrderCounter++,
             source: TaskSource.AI,
           });
-          await manager.save(Task, taskEntity);
+          const savedTask = await manager.save(Task, taskEntity);
           totalTasks++;
+
+          // Register in lookup (normalised for fuzzy name matching)
+          taskTitleToId.set(savedTask.title.trim().toLowerCase(), savedTask.id);
+
+          // Capture raw dependency names to resolve after all tasks are saved
+          const depNames: string[] = Array.isArray(taskData.dependencies)
+            ? taskData.dependencies
+            : [];
+          if (depNames.length > 0) {
+            taskDependencyNames.set(savedTask.id, depNames);
+          }
+        }
+      }
+
+      // ── Phase 2: Bulk-insert task dependencies ─────────────────────────────
+      // All tasks are now saved, so we can resolve name strings → real UUIDs.
+      // Unresolvable names (AI hallucinations / cross-feature mismatches) are
+      // silently skipped to avoid blocking the whole onboarding submission.
+      if (taskDependencyNames.size > 0) {
+        const depRows: { task_id: string; dependency_id: string }[] = [];
+
+        for (const [taskId, depNames] of taskDependencyNames) {
+          for (const rawName of depNames) {
+            const depId = taskTitleToId.get(rawName.trim().toLowerCase());
+            if (depId && depId !== taskId) {
+              depRows.push({ task_id: taskId, dependency_id: depId });
+            }
+          }
+        }
+
+        if (depRows.length > 0) {
+          await manager
+            .createQueryBuilder()
+            .insert()
+            .into('task_dependencies')
+            .values(depRows)
+            .orIgnore() // skip duplicates safely
+            .execute();
         }
       }
 

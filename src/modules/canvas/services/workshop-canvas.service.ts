@@ -222,6 +222,9 @@ export class WorkshopCanvasService {
                 title: task.task_name || `Task ${ti + 1}`,
                 description: task.task_description || '',
                 priority: task.priority || 'MEDIUM',
+                dependencies: Array.isArray(task.dependencies)
+                  ? task.dependencies
+                  : [],
               },
             }),
           );

@@ -472,7 +472,12 @@ ${JSON.stringify(context, null, 2)}`;
         .map((m) => ({ role: m.role, content: m.content }));
 
       const systemInstruction =
-        'You are an expert product manager. Given a project goal, context, and current workshop state, decompose the request into a set of features (sections) and tasks. Return ONLY valid JSON matching the schema. No markdown formatting wraps, no prose.';
+        'You are an expert product manager. Given a project goal, context, and current workshop state, decompose the request into a set of features (sections) and tasks. ' +
+        'CRITICAL DEPENDENCY RULES: (1) Task dependencies MUST be expressed on individual tasks only — never on features/sections. ' +
+        '(2) A task\'s "dependencies" array must list the exact task_name strings of other tasks that must be completed before this task can start. ' +
+        '(3) Every task must include a "dependencies" field — use an empty array [] when there are no dependencies. ' +
+        '(4) Do NOT include a dependencies field on features. ' +
+        'Return ONLY valid JSON matching the schema. No markdown formatting wraps, no prose.';
 
       const prompt = `Decompose this product idea: "${dto.prompt}".
 Project Info: Name: "${projectInfo.name}", Description: "${projectInfo.description || ''}".

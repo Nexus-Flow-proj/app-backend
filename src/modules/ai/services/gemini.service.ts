@@ -167,11 +167,7 @@ export class GeminiService {
 
     let fullSystemInstruction = systemInstruction;
     if (responseSchema) {
-      fullSystemInstruction += `\n\nCRITICAL OUTPUT RULES:
-1. You MUST output ONLY valid JSON matching this schema:
-${JSON.stringify(responseSchema)}
-2. Keep task and feature descriptions concise.
-3. Do NOT wrap output in markdown formatting or extra text.`;
+      fullSystemInstruction += `\n\nCRITICAL OUTPUT RULES:\n1. You MUST output ONLY valid JSON matching this schema:\n${JSON.stringify(responseSchema)}\n2. Keep task and feature descriptions concise.\n3. Do NOT wrap output in markdown formatting or extra text.`;
     }
 
     const response = await fetch(
@@ -374,24 +370,20 @@ ${JSON.stringify(responseSchema)}
           items: {
             type: SchemaType.OBJECT,
             properties: {
-              title: { type: SchemaType.STRING },
-              rationale: { type: SchemaType.STRING },
+              feature_name: { type: SchemaType.STRING },
+              feature_description: { type: SchemaType.STRING },
               priority: {
                 type: SchemaType.STRING,
                 enum: ['HIGH', 'MEDIUM', 'LOW'],
               },
               color: { type: SchemaType.STRING },
-              dependencies: {
-                type: SchemaType.ARRAY,
-                items: { type: SchemaType.STRING },
-              },
               tasks: {
                 type: SchemaType.ARRAY,
                 items: {
                   type: SchemaType.OBJECT,
                   properties: {
-                    title: { type: SchemaType.STRING },
-                    description: { type: SchemaType.STRING },
+                    task_name: { type: SchemaType.STRING },
+                    task_description: { type: SchemaType.STRING },
                     priority: {
                       type: SchemaType.STRING,
                       enum: ['LOW', 'MEDIUM', 'HIGH', 'URGENT'],
@@ -417,14 +409,22 @@ ${JSON.stringify(responseSchema)}
                     },
                     dependencies: {
                       type: SchemaType.ARRAY,
+                      description:
+                        'Exact task_name values of other tasks that must be completed before this task can start. Reference tasks by their exact task_name string. Use an empty array if there are no dependencies.',
                       items: { type: SchemaType.STRING },
                     },
                   },
-                  required: ['title', 'description', 'priority', 'type'],
+                  required: [
+                    'task_name',
+                    'task_description',
+                    'priority',
+                    'type',
+                    'dependencies',
+                  ],
                 },
               },
             },
-            required: ['title', 'rationale', 'priority', 'color', 'tasks'],
+            required: ['feature_name', 'feature_description', 'priority', 'color', 'tasks'],
           },
         },
       },
