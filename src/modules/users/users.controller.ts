@@ -8,6 +8,7 @@ import {
   UploadedFile,
   BadRequestException,
   Body,
+  Param,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '@shared/guards/jwt-auth.guard';
@@ -32,6 +33,16 @@ export class UsersController {
     const data = await this.usersService.getMe(user.id);
     return {
       message: 'Profile retrieved successfully.',
+      data,
+    };
+  }
+
+  // ─── GET /users/:userId ───────────────────────────────────
+  @Get(':userId')
+  async getUserById(@Param('userId') userId: string) {
+    const data = await this.usersService.getUserById(userId);
+    return {
+      message: 'User profile loaded successfully',
       data,
     };
   }

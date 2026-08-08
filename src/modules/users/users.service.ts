@@ -12,6 +12,8 @@ import { StorageService } from '@shared/providers/storage/storage.service';
 import { UpdateUserDto } from './dtos/update-user.dto';
 import { toUserResponse } from './mappers/user.mapper';
 import { UserResponseDto } from './dtos/user-response.dto';
+import { UserProfileDto } from './dtos/user-profile.dto';
+import { toUserProfileResponse } from './mappers/userProfile.mapper';
 
 @Injectable()
 export class UsersService {
@@ -19,7 +21,6 @@ export class UsersService {
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
     @InjectRepository(Skill)
-    private readonly skillRepository: Repository<Skill>,
     private readonly storageService: StorageService,
     private readonly dataSource: DataSource,
   ) {}
@@ -43,12 +44,10 @@ export class UsersService {
       throw new NotFoundException('User not found.');
     }
 
-    // Delete old avatar if present
     if (user.avatarUrl) {
       await this.storageService.deleteAvatar(user.avatarUrl);
     }
 
-    // Upload new avatar to Supabase
     const avatarUrl = await this.storageService.uploadAvatar(
       user.id,
       file.buffer,
@@ -56,7 +55,6 @@ export class UsersService {
       file.originalname,
     );
 
-    // Save updated avatar URL
     user.avatarUrl = avatarUrl;
     const savedUser = await this.userRepository.save(user);
 
@@ -89,6 +87,19 @@ export class UsersService {
     return toUserResponse(user);
   }
 
+  async getUserById(userId: string): Promise<UserProfileDto> {
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      relations: { skills: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found.');
+    }
+
+    return toUserProfileResponse(user);
+  }
+
   async updateMe(userId: string, dto: UpdateUserDto): Promise<UserResponseDto> {
     const user = await this.userRepository.findOne({
       where: { id: userId },
@@ -99,7 +110,6 @@ export class UsersService {
       throw new NotFoundException('User not found.');
     }
 
-    // If email is being changed, check for uniqueness
     if (dto.email && dto.email !== user.email) {
       const existing = await this.userRepository.findOne({
         where: { email: dto.email },
@@ -116,15 +126,12 @@ export class UsersService {
     if (dto.bio !== undefined) user.bio = dto.bio;
     if (dto.avatar !== undefined) user.avatarUrl = dto.avatar;
 
-    // Handle skills: replace all existing skills with the new list
     if (dto.skills !== undefined) {
       const skillNames = dto.skills;
 
       await this.dataSource.transaction(async (manager) => {
-        // Delete old skills
         await manager.delete(Skill, { user: { id: userId } });
 
-        // Create new skills
         const newSkills = skillNames
           .map((name) => name.trim())
           .filter((name) => name.length > 0)
@@ -138,7 +145,6 @@ export class UsersService {
 
     await this.userRepository.save(user);
 
-    // Reload full profile with relations for response
     return this.getMe(userId);
   }
 }
