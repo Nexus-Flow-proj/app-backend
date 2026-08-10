@@ -18,7 +18,7 @@ export interface RequestCookies {
   csrf_token?: string;
 }
 
-function getCookieOptions(maxAge: number, path?: string) {
+function getCookieOptions(maxAge: number, path = '/') {
   const isProd = process.env.NODE_ENV === 'production';
 
   return {
@@ -26,7 +26,7 @@ function getCookieOptions(maxAge: number, path?: string) {
     secure: isProd,
     sameSite: isProd ? ('none' as const) : ('lax' as const),
     maxAge,
-    ...(path ? { path } : {}),
+    path,
   };
 }
 
@@ -61,6 +61,7 @@ export function clearAuthCookies(res: Response): void {
   const cookieOptions = {
     secure: isProd,
     sameSite: isProd ? ('none' as const) : ('lax' as const),
+    path: '/',
   };
 
   res.clearCookie('access_token', cookieOptions);
