@@ -1,13 +1,9 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Canvas } from './entities/canvas.entity';
-import { CanvasObject } from './entities/canvas-object.entity';
-import { CanvasConnection } from './entities/canvas-connection.entity';
 import { Workshop } from './entities/workshop.entity';
 import { WorkshopObject } from './entities/workshop-object.entity';
 import { WorkshopConnection } from './entities/workshop-connection.entity';
-import { CanvasController } from './controllers/canvas.controller';
-import { CanvasService } from './services/canvas.service';
+import { MiniWorkshop } from './entities/mini-workshop.entity';
 import { Project } from '@modules/projects/entities/project.entity';
 import { ProjectMember } from '@modules/projects/entities/project-member.entity';
 import { OnboardingDraft } from '@modules/projects/entities/onboarding-draft.entity';
@@ -16,16 +12,17 @@ import { Board } from '@modules/boards/entities/board.entity';
 import { WorkshopCanvasController } from './controllers/workshop-canvas.controller';
 import { WorkshopCanvasService } from './services/workshop-canvas.service';
 import { WorkshopCanvasValidator } from './validators/workshop-canvas.validator';
+import { MiniWorkshopController } from './controllers/mini-workshop.controller';
+import { MiniWorkshopService } from './services/mini-workshop.service';
+import { MiniWorkshopValidator } from './validators/mini-workshop.validator';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
-      Canvas,
-      CanvasObject,
-      CanvasConnection,
       Workshop,
       WorkshopObject,
       WorkshopConnection,
+      MiniWorkshop,
       Project,
       ProjectMember,
       OnboardingDraft,
@@ -33,8 +30,13 @@ import { WorkshopCanvasValidator } from './validators/workshop-canvas.validator'
       Board,
     ]),
   ],
-  controllers: [CanvasController, WorkshopCanvasController],
-  providers: [CanvasService, WorkshopCanvasService, WorkshopCanvasValidator],
-  exports: [CanvasService, WorkshopCanvasService],
+  controllers: [WorkshopCanvasController, MiniWorkshopController],
+  providers: [
+    WorkshopCanvasService,
+    WorkshopCanvasValidator,
+    MiniWorkshopService,
+    MiniWorkshopValidator,
+  ],
+  exports: [WorkshopCanvasService, MiniWorkshopService],
 })
 export class CanvasModule {}

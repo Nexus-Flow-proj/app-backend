@@ -16,10 +16,10 @@ import { Board } from '../boards/entities/board.entity';
 import { SubTask } from '../tasks/entities/subtask.entity';
 import { TaskComment } from '../tasks/entities/task-comment.entity';
 import { TimeLog } from '../tasks/entities/time-log.entity';
-import { Canvas } from '../canvas/entities/canvas.entity';
 import { Workshop } from '../canvas/entities/workshop.entity';
 import { WorkshopObject } from '../canvas/entities/workshop-object.entity';
 import { WorkshopConnection } from '../canvas/entities/workshop-connection.entity';
+import { MiniWorkshop } from '../canvas/entities/mini-workshop.entity';
 import { ActivitiesModule } from '@modules/activities/activities.module';
 import { NotificationsModule } from '@modules/notifications/notifications.module';
 
@@ -37,10 +37,10 @@ import { NotificationsModule } from '@modules/notifications/notifications.module
       SubTask,
       TaskComment,
       TimeLog,
-      Canvas,
       Workshop,
       WorkshopObject,
       WorkshopConnection,
+      MiniWorkshop,
     ]),
     MailModule,
     ActivitiesModule,

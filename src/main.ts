@@ -2,6 +2,7 @@ import 'module-alias/register';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import cookieParser from 'cookie-parser';
+import { json, urlencoded } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { ValidationPipe } from '@nestjs/common';
 import { ApiResponseInterceptor } from '@shared/interceptors/api-response.interceptor';
@@ -25,6 +26,8 @@ async function bootstrap() {
     exposedHeaders: ['x-csrf-token'],
   });
 
+  app.use(json({ limit: '25mb' }));
+  app.use(urlencoded({ extended: true, limit: '25mb' }));
   app.use(cookieParser());
   app.useGlobalPipes(
     new ValidationPipe({
