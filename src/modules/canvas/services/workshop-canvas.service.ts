@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, DeepPartial, In, Repository } from 'typeorm';
 import { randomUUID } from 'node:crypto';
@@ -7,6 +7,7 @@ import { Workshop } from '../entities/workshop.entity';
 import { WorkshopObject } from '../entities/workshop-object.entity';
 import { WorkshopConnection } from '../entities/workshop-connection.entity';
 import { OnboardingDraft } from '@modules/projects/entities/onboarding-draft.entity';
+import { DraftStatus } from '@modules/projects/enums/draft-status.enum';
 import { WorkshopCanvasResponseDto } from '../dtos/workshop/workshop-canvas-response.dto';
 import { toWorkshopCanvasResponse } from '../mappers/workshop-canvas.mapper';
 import { WorkshopCanvasValidator } from '../validators/workshop-canvas.validator';
@@ -45,7 +46,12 @@ export class WorkshopCanvasService {
     userId: string,
     dto: SaveWorkshopCanvasDto,
   ): Promise<WorkshopCanvasResponseDto> {
-    await this.findDraftOrFail(draftId, userId);
+    const draft = await this.findDraftOrFail(draftId, userId);
+    if (draft.submittedAt || draft.status === DraftStatus.SUBMITTED) {
+      throw new ForbiddenException(
+        'Submitted onboarding draft workshop is read-only and cannot be modified',
+      );
+    }
 
     this.normalizeClientIds(dto);
 
@@ -130,6 +136,13 @@ export class WorkshopCanvasService {
     draftId: string,
     normalizedPlan: Record<string, any>,
   ): Promise<WorkshopCanvasResponseDto> {
+    const draft = await this.draftRepo.findOne({ where: { id: draftId } });
+    if (draft && (draft.submittedAt || draft.status === DraftStatus.SUBMITTED)) {
+      throw new ForbiddenException(
+        'Submitted onboarding draft is read-only and cannot be modified',
+      );
+    }
+
     return this.dataSource.transaction(async (manager) => {
       const workshop = await this.findOrCreateDraftWorkshop(draftId, manager);
       const objectRepo = manager.getRepository(WorkshopObject);

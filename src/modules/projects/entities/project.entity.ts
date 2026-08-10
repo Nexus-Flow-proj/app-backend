@@ -13,11 +13,19 @@ import { ProjectMember } from './project-member.entity';
 import { Invite } from './invite.entity';
 import { ProjectStatus } from '../enums/project-status.enum';
 import { ProjectRole } from './project-role.entity';
+import { OnboardingDraft } from './onboarding-draft.entity';
 
 @Entity('projects')
 export class Project {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
+
+  @Column({ name: 'draft_id', type: 'uuid', nullable: true })
+  draftId!: string | null;
+
+  @ManyToOne(() => OnboardingDraft, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'draft_id' })
+  onboardingDraft!: OnboardingDraft | null;
 
   @Column({ type: 'varchar' })
   name!: string;

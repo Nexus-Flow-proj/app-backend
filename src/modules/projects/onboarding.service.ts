@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -87,6 +88,12 @@ export class OnboardingService {
       throw new NotFoundException('Onboarding draft not found');
     }
 
+    if (draft.submittedAt || draft.status === DraftStatus.SUBMITTED) {
+      throw new ForbiddenException(
+        'Submitted onboarding draft is read-only and cannot be modified',
+      );
+    }
+
     if (dto.projectInfo) {
       draft.projectInfo = {
         ...draft.projectInfo,
@@ -98,10 +105,18 @@ export class OnboardingService {
   }
 
   async deleteDraft(draftId: string, userId: string): Promise<void> {
-    const result = await this.draftRepo.delete({ id: draftId, userId });
-    if (result.affected === 0) {
+    const draft = await this.draftRepo.findOne({ where: { id: draftId, userId } });
+    if (!draft) {
       throw new NotFoundException('Onboarding draft not found');
     }
+
+    if (draft.submittedAt || draft.status === DraftStatus.SUBMITTED) {
+      throw new ForbiddenException(
+        'Submitted onboarding draft is read-only and cannot be deleted',
+      );
+    }
+
+    await this.draftRepo.delete({ id: draftId, userId });
   }
 
   async submitOnboarding(
@@ -152,6 +167,7 @@ export class OnboardingService {
         description: draft.projectInfo.description ?? null,
         color: draft.projectInfo.color,
         admin: owner,
+        draftId: draft.id,
       });
       const savedProject = await manager.save(Project, project);
 
@@ -315,6 +331,7 @@ export class OnboardingService {
       return {
         projectId: savedProject.id,
         projectName: savedProject.name,
+        draftId: draft.id,
         boardColumns: boardColumnInfo,
         taskCount: totalTasks,
       };

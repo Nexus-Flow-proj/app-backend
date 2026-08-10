@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AIGenerationJob } from '../entities/ai-generation-job.entity';
@@ -11,6 +11,7 @@ import {
   BoardAIChatDto,
 } from '../dtos/ai-generation.dto';
 import { OnboardingDraft } from '@modules/projects/entities/onboarding-draft.entity';
+import { DraftStatus } from '@modules/projects/enums/draft-status.enum';
 import { Workshop } from '@modules/canvas/entities/workshop.entity';
 import { WorkshopObject } from '@modules/canvas/entities/workshop-object.entity';
 import { WorkshopConnection } from '@modules/canvas/entities/workshop-connection.entity';
@@ -66,6 +67,12 @@ export class AIService {
     });
     if (!draft) {
       throw new NotFoundException('Onboarding draft not found');
+    }
+
+    if (draft.submittedAt || draft.status === DraftStatus.SUBMITTED) {
+      throw new ForbiddenException(
+        'Submitted onboarding draft is read-only and cannot generate new plans',
+      );
     }
 
     // 1. Create a pending job record

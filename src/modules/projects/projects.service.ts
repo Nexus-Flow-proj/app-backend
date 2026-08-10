@@ -1002,6 +1002,7 @@ export class ProjectsService {
       deadline: project.deadline,
       status: project.status,
       adminId,
+      draftId: project.draftId ?? null,
       memberCount,
       color: project.color,
       currentMember: currentMember
