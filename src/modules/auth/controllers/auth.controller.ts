@@ -202,6 +202,8 @@ export class AuthController {
       { accessToken, refreshToken, csrfToken },
       this.getCookieMaxAgeConfig(),
     );
-    res.redirect(`${frontendUrl}/dashboard`);
+    return res.redirect(
+      `${frontendUrl}/dashboard?token=${encodeURIComponent(accessToken)}&csrfToken=${encodeURIComponent(csrfToken)}`,
+    );
   }
 }
