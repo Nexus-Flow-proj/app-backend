@@ -285,6 +285,36 @@ export class ProjectsService {
     }
   }
 
+  private async createInviteCancelledNotification(
+    inviteId: string,
+    projectId: string,
+    projectName: string,
+    recipientId: string,
+    actorId: string,
+  ): Promise<void> {
+    if (recipientId === actorId) {
+      return;
+    }
+
+    try {
+      await this.notificationsService.create({
+        recipientId,
+        actorId,
+        type: NotificationType.INVITATION_CANCELLED,
+        title: 'Invitation cancelled',
+        message: `Your invitation to ${projectName} was cancelled`,
+        projectId,
+        resourceType: 'INVITATION',
+        resourceId: inviteId,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to create INVITATION_CANCELLED notification for inviteId=${inviteId}, recipientId=${recipientId}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+    }
+  }
+
   async create(body: CreateProjectDto, userId: string): Promise<ProjectDto> {
     const owner = await this.userRepo.findOne({ where: { id: userId } });
     if (!owner) {
@@ -738,9 +768,14 @@ export class ProjectsService {
     );
   }
 
-  async cancelInvite(projectId: string, inviteId: string): Promise<void> {
+  async cancelInvite(
+    projectId: string,
+    inviteId: string,
+    actorId: string,
+  ): Promise<void> {
     const invite = await this.inviteRepo.findOne({
       where: { id: inviteId, project: { id: projectId } },
+      relations: { project: true, invitedBy: true },
     });
 
     if (!invite) {
@@ -755,6 +790,23 @@ export class ProjectsService {
 
     invite.status = InviteStatus.CANCELLED;
     await this.inviteRepo.save(invite);
+
+    const invitedUser = await this.userRepo
+      .createQueryBuilder('user')
+      .where('LOWER(user.email) = LOWER(:email)', {
+        email: invite.email.trim(),
+      })
+      .getOne();
+
+    if (invitedUser) {
+      await this.createInviteCancelledNotification(
+        invite.id,
+        invite.project.id,
+        invite.project.name,
+        invitedUser.id,
+        actorId,
+      );
+    }
   }
 
   async revokeInvite(projectId: string, inviteId: string): Promise<void> {

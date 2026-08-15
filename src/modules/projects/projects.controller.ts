@@ -163,8 +163,9 @@ export class ProjectsController {
   async cancelInvite(
     @Param('projectId') projectId: string,
     @Param('inviteId') inviteId: string,
+    @CurrentUser() user: User,
   ): Promise<{ message: string }> {
-    await this.projectsService.cancelInvite(projectId, inviteId);
+    await this.projectsService.cancelInvite(projectId, inviteId, user.id);
     return { message: 'Invite cancelled successfully.' };
   }
 
