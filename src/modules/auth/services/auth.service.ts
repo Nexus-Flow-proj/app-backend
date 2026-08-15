@@ -244,76 +244,69 @@ export class AuthService {
     });
   }
 
-  async loginWithGoogle(dto: GoogleUserDto): Promise<GoogleAuthResult> {
-    const user = await this.userRepository.findOne({
-      where: { googleId: dto.googleId },
+  private async handleGoogleAuth(
+    dto: GoogleUserDto,
+    flow: GoogleAuthFlow,
+  ): Promise<GoogleAuthResult> {
+    // 1. Single DB query lookup by googleId OR email
+    const existingUser = await this.userRepository.findOne({
+      where: [{ googleId: dto.googleId }, { email: dto.email }],
     });
 
-    if (!user) {
-      return {
-        ok: false,
-        flow: 'login',
-        message: 'Google account not linked. Please sign up with Google first.',
-      };
+    if (existingUser) {
+      let isModified = false;
+
+      // Link googleId if account was created via standard email signup
+      if (!existingUser.googleId) {
+        existingUser.googleId = dto.googleId;
+        isModified = true;
+      }
+
+      // Fill in avatarUrl if user has no avatar set
+      if (!existingUser.avatarUrl && dto.avatarUrl) {
+        existingUser.avatarUrl = dto.avatarUrl;
+        isModified = true;
+      }
+
+      const user = isModified
+        ? await this.userRepository.save(existingUser)
+        : existingUser;
+
+      return { ok: true, flow, user };
     }
 
-    return {
-      ok: true,
-      flow: 'login',
-      user,
-    };
-  }
-
-  async signupWithGoogle(dto: GoogleUserDto): Promise<GoogleAuthResult> {
-    const existingByGoogleId = await this.userRepository.findOne({
-      where: { googleId: dto.googleId },
-    });
-
-    if (existingByGoogleId) {
-      return {
-        ok: false,
-        flow: 'signup',
-        message: 'Google account already exists. Please log in instead.',
-      };
-    }
-
-    const existingByEmail = await this.userRepository.findOne({
-      where: { email: dto.email },
-    });
-
-    if (existingByEmail) {
-      return {
-        ok: false,
-        flow: 'signup',
-        message: 'Email already in use. Please log in instead.',
-      };
-    }
-
+    // 2. User does not exist -> Create new user
     const newUser = this.userRepository.create({
       googleId: dto.googleId,
       email: dto.email,
-      firstName: dto.firstName,
-      lastName: dto.lastName,
+      firstName: dto.firstName || 'User',
+      lastName: dto.lastName || '',
       avatarUrl: dto.avatarUrl ?? undefined,
     });
 
     const savedUser = await this.userRepository.save(newUser);
 
-    return {
-      ok: true,
-      flow: 'signup',
-      user: savedUser,
-    };
+    return { ok: true, flow, user: savedUser };
+  }
+
+  async loginWithGoogle(dto: GoogleUserDto): Promise<GoogleAuthResult> {
+    return this.handleGoogleAuth(dto, 'login');
+  }
+
+  async signupWithGoogle(dto: GoogleUserDto): Promise<GoogleAuthResult> {
+    return this.handleGoogleAuth(dto, 'signup');
   }
 
   async getMe(userId: string): Promise<UserResponseDto> {
     const user = await this.userRepository.findOne({
       where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
+      relations: {
+        skills: true,
+        projectMemberships: {
+          project: true,
+          role: true,
+        },
+        ownedProjects: true,
       },
     });
 

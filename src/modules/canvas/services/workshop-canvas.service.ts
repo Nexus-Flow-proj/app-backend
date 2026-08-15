@@ -1,24 +1,15 @@
-import {
-  Injectable,
-  InternalServerErrorException,
-  NotFoundException,
-  UnprocessableEntityException,
-} from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import {
-  DataSource,
-  DeepPartial,
-  In,
-  QueryFailedError,
-  Repository,
-} from 'typeorm';
-import { Canvas } from '../entities/canvas.entity';
-import { Project } from '@modules/projects/entities/project.entity';
-import { CanvasType } from '../enums/canvas-type.enum';
+import { DataSource, DeepPartial, In, Repository } from 'typeorm';
+import { randomUUID } from 'node:crypto';
+import { isUUID } from 'class-validator';
+import { Workshop } from '../entities/workshop.entity';
+import { WorkshopObject } from '../entities/workshop-object.entity';
+import { WorkshopConnection } from '../entities/workshop-connection.entity';
+import { OnboardingDraft } from '@modules/projects/entities/onboarding-draft.entity';
+import { DraftStatus } from '@modules/projects/enums/draft-status.enum';
 import { WorkshopCanvasResponseDto } from '../dtos/workshop/workshop-canvas-response.dto';
 import { toWorkshopCanvasResponse } from '../mappers/workshop-canvas.mapper';
-import { CanvasObject } from '../entities/canvas-object.entity';
-import { CanvasConnection } from '../entities/canvas-connection.entity';
 import { WorkshopCanvasValidator } from '../validators/workshop-canvas.validator';
 import { SaveWorkshopCanvasDto } from '../dtos/workshop/save-workshop-canvas.dto';
 import { SaveWorkshopCanvasObjectDto } from '../dtos/workshop/save-workshop-canvas-object.dto';
@@ -28,533 +19,375 @@ import { SaveWorkshopTaskDataDto } from '../dtos/workshop/save-workshop-task-dat
 import { SaveWorkshopStickyNoteDataDto } from '../dtos/workshop/save-workshop-sticky-note-data.dto';
 import { CanvasObjectType } from '../enums/canvas-object-type.enum';
 import { CanvasConnectionType } from '../enums/canvas-connection-type.enum';
-import { Board } from '@modules/boards/entities/board.entity';
-import { Task } from '@modules/tasks/entities/task.entity';
-
-type ProjectWithAdmin = Project & {
-  admin: Project['admin'];
-};
-
-const WORKSHOP_OBJECT_TYPES: CanvasObjectType[] = [
-  CanvasObjectType.SECTION_FRAME,
-  CanvasObjectType.TASK_CARD,
-  CanvasObjectType.STICKY_NOTE,
-];
 
 @Injectable()
 export class WorkshopCanvasService {
   constructor(
     private readonly dataSource: DataSource,
-    @InjectRepository(Canvas)
-    private readonly canvasRepo: Repository<Canvas>,
-    @InjectRepository(Project)
-    private readonly projectRepo: Repository<Project>,
-    @InjectRepository(Board)
-    private readonly boardRepo: Repository<Board>,
-    @InjectRepository(Task)
-    private readonly taskRepo: Repository<Task>,
-    @InjectRepository(CanvasObject)
-    private readonly canvasObjectRepo: Repository<CanvasObject>,
-    @InjectRepository(CanvasConnection)
-    private readonly canvasConnectionRepo: Repository<CanvasConnection>,
+    @InjectRepository(OnboardingDraft)
+    private readonly draftRepo: Repository<OnboardingDraft>,
     private readonly workshopCanvasValidator: WorkshopCanvasValidator,
   ) {}
 
-  async getWorkshopCanvas(
-    projectId: string,
+  // ─── Public CRUD ───────────────────────────────────────────────────────────
+
+  async getDraftWorkshop(
+    draftId: string,
+    userId: string,
   ): Promise<WorkshopCanvasResponseDto> {
-    const project = await this.findProjectWithAdminOrFail(projectId);
-    const canvas = await this.findOrCreateWorkshopCanvas(project, {
-      lockForUpdate: false,
-    });
-    return toWorkshopCanvasResponse(await this.loadWorkshopCanvas(canvas.id));
+    await this.findDraftOrFail(draftId, userId);
+    const workshop = await this.findOrCreateDraftWorkshop(draftId);
+    const loadedWorkshop = await this.loadWorkshop(workshop.id);
+    return toWorkshopCanvasResponse(loadedWorkshop);
   }
 
-  async saveWorkshopCanvas(
-    projectId: string,
+  async saveDraftWorkshop(
+    draftId: string,
+    userId: string,
     dto: SaveWorkshopCanvasDto,
   ): Promise<WorkshopCanvasResponseDto> {
+    const draft = await this.findDraftOrFail(draftId, userId);
+    if (draft.submittedAt || draft.status === DraftStatus.SUBMITTED) {
+      throw new ForbiddenException(
+        'Submitted onboarding draft workshop is read-only and cannot be modified',
+      );
+    }
+
+    this.normalizeClientIds(dto);
+
     return this.dataSource.transaction(async (manager) => {
-      const project = await this.findProjectWithAdminOrFail(projectId, manager);
-      const canvas = await this.findOrCreateWorkshopCanvas(project, {
-        manager,
-        lockForUpdate: true,
-      });
+      const workshop = await this.findOrCreateDraftWorkshop(draftId, manager);
 
       await this.workshopCanvasValidator.validateDocumentOrThrow({
         dto,
-        projectId,
+        projectId: '', // Draft workshop has no live project context
         manager,
-        canvasId: canvas.id,
       });
 
       await this.persistWorkshopDocument({
-        canvasId: canvas.id,
-        projectId,
+        workshopId: workshop.id,
         dto,
         manager,
       });
 
-      const hydratedCanvas = await this.loadWorkshopCanvas(canvas.id, manager);
-      return toWorkshopCanvasResponse(hydratedCanvas);
+      const loadedWorkshop = await this.loadWorkshop(workshop.id, manager);
+      return toWorkshopCanvasResponse(loadedWorkshop);
     });
   }
 
-  private async findProjectWithAdminOrFail(
-    projectId: string,
+  /**
+   * Normalizes client temporary IDs (e.g. "frame-1785410928301" or "temp-task-1")
+   * into valid DB UUIDs before validation and persistence.
+   * Remaps references (such as task.data.featureId and connection.fromObjectId/toObjectId).
+   */
+  private normalizeClientIds(dto: SaveWorkshopCanvasDto): void {
+    const idMap = new Map<string, string>();
+
+    for (const object of dto.objects ?? []) {
+      if (!isUUID(object.id)) {
+        const newUuid = randomUUID();
+        idMap.set(object.id, newUuid);
+        object.id = newUuid;
+      }
+    }
+
+    for (const object of dto.objects ?? []) {
+      if (object.type === 'TASK_CARD' && object.data) {
+        const taskData = object.data as SaveWorkshopTaskDataDto;
+        if (taskData.featureId && idMap.has(taskData.featureId)) {
+          taskData.featureId = idMap.get(taskData.featureId)!;
+        }
+      }
+    }
+
+    for (const conn of dto.connections ?? []) {
+      if (!isUUID(conn.id)) {
+        conn.id = randomUUID();
+      }
+      if (conn.fromObjectId && idMap.has(conn.fromObjectId)) {
+        conn.fromObjectId = idMap.get(conn.fromObjectId)!;
+      }
+      if (conn.toObjectId && idMap.has(conn.toObjectId)) {
+        conn.toObjectId = idMap.get(conn.toObjectId)!;
+      }
+    }
+  }
+
+  // ─── AI Plan Auto-Application ──────────────────────────────────────────────
+
+  /**
+   * Receives a normalized onboarding AI plan and persists it as WorkshopObject
+   * rows in the draft's Workshop using a default grid layout.
+   *
+   * Called automatically by AIService after generation completes — the frontend
+   * does NOT need to post coordinates; it simply reads the workshop state via
+   * GET /workshop/:draftId after receiving the `ai.generation.completed` event.
+   *
+   * Layout algorithm:
+   *  • Each Feature (SECTION_FRAME) is placed horizontally:
+   *      x = index * FRAME_X_GAP + 60, y = 80
+   *  • Frame height grows to fit its task cards (min 300px)
+   *  • Each Task Card is stacked vertically inside its parent frame:
+   *      x = frameX + FRAME_PADDING_SIDE, y = frameY + FRAME_PADDING_TOP + taskIndex * (TASK_CARD_HEIGHT + 16)
+   *  • The existing workshop is cleared first so the AI result is always canonical.
+   *  • A color palette of 6 is cycled for variety.
+   */
+  async applyAIPlanToWorkshop(
+    draftId: string,
+    normalizedPlan: Record<string, any>,
+  ): Promise<WorkshopCanvasResponseDto> {
+    const draft = await this.draftRepo.findOne({ where: { id: draftId } });
+    if (draft && (draft.submittedAt || draft.status === DraftStatus.SUBMITTED)) {
+      throw new ForbiddenException(
+        'Submitted onboarding draft is read-only and cannot be modified',
+      );
+    }
+
+    return this.dataSource.transaction(async (manager) => {
+      const workshop = await this.findOrCreateDraftWorkshop(draftId, manager);
+      const objectRepo = manager.getRepository(WorkshopObject);
+      const connectionRepo = manager.getRepository(WorkshopConnection);
+
+      // Clear the existing workshop so the AI plan is always canonical
+      await connectionRepo.delete({ workshopId: workshop.id });
+      await objectRepo.delete({ workshopId: workshop.id });
+
+      const features: any[] = Array.isArray(normalizedPlan.features)
+        ? normalizedPlan.features
+        : [];
+
+      const framesToSave: WorkshopObject[] = [];
+      const tasksToSave: WorkshopObject[] = [];
+
+      // Color palette — cycles for more than 6 features
+      const FRAME_COLORS = [
+        { bg: '#eff6ff', border: '#3b82f6' }, // blue
+        { bg: '#f0fdf4', border: '#22c55e' }, // green
+        { bg: '#fff7ed', border: '#f97316' }, // orange
+        { bg: '#faf5ff', border: '#a855f7' }, // purple
+        { bg: '#fdf2f8', border: '#ec4899' }, // pink
+        { bg: '#ecfeff', border: '#06b6d4' }, // cyan
+      ];
+
+      const FRAME_WIDTH = 520;
+      const FRAME_X_GAP = 620;
+      const TASK_CARD_HEIGHT = 110;
+      const TASK_CARD_WIDTH = 472;
+      const FRAME_PADDING_TOP = 96;
+      const FRAME_PADDING_SIDE = 24;
+      const FRAME_PADDING_BOTTOM = 32;
+      const TASK_GAP = 16;
+      const MIN_FRAME_HEIGHT = 300;
+
+      for (let fi = 0; fi < features.length; fi++) {
+        const feature = features[fi];
+        const tasks: any[] = Array.isArray(feature.tasks) ? feature.tasks : [];
+
+        const frameId = randomUUID();
+        const frameX = fi * FRAME_X_GAP + 60;
+        const frameY = 80;
+        const frameHeight = Math.max(
+          MIN_FRAME_HEIGHT,
+          FRAME_PADDING_TOP +
+            tasks.length * TASK_CARD_HEIGHT +
+            (tasks.length > 0 ? (tasks.length - 1) * TASK_GAP : 0) +
+            FRAME_PADDING_BOTTOM,
+        );
+        const color = FRAME_COLORS[fi % FRAME_COLORS.length];
+
+        framesToSave.push(
+          objectRepo.create({
+            id: frameId,
+            workshopId: workshop.id,
+            type: CanvasObjectType.SECTION_FRAME,
+            x: frameX,
+            y: frameY,
+            width: FRAME_WIDTH,
+            height: frameHeight,
+            rotation: 0,
+            zIndex: fi + 1,
+            data: {
+              kind: 'Feature',
+              title: feature.feature_name || `Feature ${fi + 1}`,
+              description: feature.feature_description || '',
+              backgroundColor: color.bg,
+              borderColor: color.border,
+            },
+          }),
+        );
+
+        for (let ti = 0; ti < tasks.length; ti++) {
+          const task = tasks[ti];
+          tasksToSave.push(
+            objectRepo.create({
+              workshopId: workshop.id,
+              type: CanvasObjectType.TASK_CARD,
+              x: frameX + FRAME_PADDING_SIDE,
+              y:
+                frameY + FRAME_PADDING_TOP + ti * (TASK_CARD_HEIGHT + TASK_GAP),
+              width: TASK_CARD_WIDTH,
+              height: TASK_CARD_HEIGHT,
+              rotation: 0,
+              zIndex: (fi + 1) * 100 + ti,
+              data: {
+                kind: 'Task',
+                featureId: frameId,
+                title: task.task_name || `Task ${ti + 1}`,
+                description: task.task_description || '',
+                priority: task.priority || 'MEDIUM',
+                dependencies: Array.isArray(task.dependencies)
+                  ? task.dependencies
+                  : [],
+              },
+            }),
+          );
+        }
+      }
+
+      // Persist frames first (tasks reference frame IDs)
+      await objectRepo.save(framesToSave);
+      await objectRepo.save(tasksToSave);
+
+      const loadedWorkshop = await this.loadWorkshop(workshop.id, manager);
+      return toWorkshopCanvasResponse(loadedWorkshop);
+    });
+  }
+
+  // ─── Private Helpers ───────────────────────────────────────────────────────
+
+  private async findDraftOrFail(
+    draftId: string,
+    userId: string,
+  ): Promise<OnboardingDraft> {
+    const draft = await this.draftRepo.findOne({
+      where: { id: draftId, userId },
+    });
+    if (!draft) {
+      throw new NotFoundException('Onboarding draft not found');
+    }
+    return draft;
+  }
+
+  private async findOrCreateDraftWorkshop(
+    draftId: string,
     manager: DataSource['manager'] = this.dataSource.manager,
-  ): Promise<ProjectWithAdmin> {
-    const project = await manager.getRepository(Project).findOne({
-      where: { id: projectId },
-      relations: {
-        admin: true,
-      },
-    });
+  ): Promise<Workshop> {
+    const workshopRepo = manager.getRepository(Workshop);
+    let workshop = await workshopRepo.findOne({ where: { draftId } });
 
-    if (!project) {
-      throw new NotFoundException('Project not found');
-    }
-
-    if (!project.admin) {
-      throw new InternalServerErrorException('Project admin is missing');
-    }
-
-    return project as ProjectWithAdmin;
-  }
-
-  private async findOrCreateWorkshopCanvas(
-    project: ProjectWithAdmin,
-    options: {
-      manager?: DataSource['manager'];
-      lockForUpdate: boolean;
-    } = {
-      lockForUpdate: false,
-    },
-  ): Promise<Canvas> {
-    const manager = options.manager ?? this.dataSource.manager;
-    const canvasRepo = manager.getRepository(Canvas);
-    const lock = options.lockForUpdate
-      ? { lock: { mode: 'pessimistic_write' as const } }
-      : {};
-    const existingCanvas = await canvasRepo.findOne({
-      where: {
-        projectId: project.id,
-        type: CanvasType.PROJECT,
-      },
-      ...lock,
-    });
-
-    if (existingCanvas) {
-      return existingCanvas;
-    }
-
-    try {
-      const canvas = canvasRepo.create({
-        projectId: project.id,
-        ownerId: project.admin!.id,
-        type: CanvasType.PROJECT,
-        name: 'Project Canvas',
-        description: null as unknown as string,
+    if (!workshop) {
+      workshop = workshopRepo.create({
+        draftId,
         viewportX: 24,
         viewportY: 24,
         viewportZoom: 0.82,
-      } as DeepPartial<Canvas>);
-
-      const savedCanvas = await canvasRepo.save(canvas);
-
-      return (await canvasRepo.findOneOrFail({
-        where: { id: savedCanvas.id },
-      })) as Canvas;
-    } catch (error) {
-      if (
-        error instanceof QueryFailedError &&
-        (error as { code?: string }).code === '23505'
-      ) {
-        const existingAfterConflict = await canvasRepo.findOne({
-          where: {
-            projectId: project.id,
-            type: CanvasType.PROJECT,
-          },
-          ...(options.lockForUpdate
-            ? { lock: { mode: 'pessimistic_write' as const } }
-            : {}),
-        });
-
-        if (existingAfterConflict) {
-          return existingAfterConflict;
-        }
-      }
-
-      throw error;
+      });
+      workshop = await workshopRepo.save(workshop);
     }
+
+    return workshop;
   }
 
   private async persistWorkshopDocument(params: {
-    canvasId: string;
-    projectId: string;
+    workshopId: string;
     dto: SaveWorkshopCanvasDto;
     manager: DataSource['manager'];
   }): Promise<void> {
-    const { canvasId, dto, manager } = params;
-    const canvasRepo = manager.getRepository(Canvas);
-    const objectRepo = manager.getRepository(CanvasObject);
-    const connectionRepo = manager.getRepository(CanvasConnection);
+    const { workshopId, dto, manager } = params;
+    const workshopRepo = manager.getRepository(Workshop);
+    const objectRepo = manager.getRepository(WorkshopObject);
+    const connectionRepo = manager.getRepository(WorkshopConnection);
 
-    const currentObjects = await objectRepo.find({
-      where: { canvasId },
-      relations: {
-        task: true,
-        boardColumn: true,
-      },
-      order: {
-        createdAt: 'ASC',
-      },
-    });
-
+    const currentObjects = await objectRepo.find({ where: { workshopId } });
     const currentConnections = await connectionRepo.find({
-      where: { canvasId },
-      order: {
-        createdAt: 'ASC',
-      },
+      where: { workshopId },
     });
 
-    const currentWorkshopObjects = currentObjects.filter((object) =>
-      WORKSHOP_OBJECT_TYPES.includes(object.type),
-    );
-    const currentGenericObjects = currentObjects.filter(
-      (object) => !WORKSHOP_OBJECT_TYPES.includes(object.type),
-    );
-    const currentWorkshopObjectsById = new Map(
-      currentWorkshopObjects.map((object) => [object.id, object]),
-    );
-    const currentGenericObjectIds = new Set(
-      currentGenericObjects.map((object) => object.id),
-    );
+    const submittedObjectIds = new Set(dto.objects.map((o) => o.id));
+    const submittedConnectionIds = new Set(dto.connections.map((c) => c.id));
 
-    const currentWorkshopObjectIds = new Set(
-      currentWorkshopObjects.map((object) => object.id),
-    );
-    const submittedObjectIds = new Set(dto.objects.map((object) => object.id));
-    const submittedConnectionIds = new Set(
-      dto.connections.map((connection) => connection.id),
-    );
+    // Delete removed connections & objects
+    const connectionsToDelete = currentConnections
+      .filter((c) => !submittedConnectionIds.has(c.id))
+      .map((c) => c.id);
 
-    const objectById = new Map(
-      currentObjects.map((object) => [object.id, object]),
-    );
-    const connectionById = new Map(
-      currentConnections.map((connection) => [connection.id, connection]),
-    );
+    const objectsToDelete = currentObjects
+      .filter((o) => !submittedObjectIds.has(o.id))
+      .map((o) => o.id);
 
-    for (const object of dto.objects) {
-      const existing = objectById.get(object.id);
-      if (existing && existing.canvasId !== canvasId) {
-        throw new UnprocessableEntityException(
-          `Workshop object '${object.id}' belongs to another canvas`,
-        );
-      }
-
-      if (currentGenericObjectIds.has(object.id)) {
-        throw new UnprocessableEntityException(
-          `Workshop object '${object.id}' conflicts with an existing generic canvas object`,
-        );
-      }
-
-      if (existing && !currentWorkshopObjectsById.has(object.id)) {
-        throw new UnprocessableEntityException(
-          `Workshop object '${object.id}' conflicts with a non-workshop canvas object`,
-        );
-      }
+    if (connectionsToDelete.length > 0) {
+      await connectionRepo.delete({ id: In(connectionsToDelete) });
     }
 
-    for (const connection of dto.connections) {
-      const existing = connectionById.get(connection.id);
-      if (existing && existing.canvasId !== canvasId) {
-        throw new UnprocessableEntityException(
-          `Workshop connection '${connection.id}' belongs to another canvas`,
-        );
-      }
-    }
-
-    const workshopConnectionIdsToDelete = currentConnections
-      .filter(
-        (connection) =>
-          currentWorkshopObjectIds.has(connection.sourceObjectId) &&
-          currentWorkshopObjectIds.has(connection.targetObjectId) &&
-          !submittedConnectionIds.has(connection.id),
-      )
-      .map((connection) => connection.id);
-
-    const workshopObjectIdsToDelete = currentWorkshopObjects
-      .filter((object) => !submittedObjectIds.has(object.id))
-      .map((object) => object.id);
-
-    if (workshopConnectionIdsToDelete.length > 0) {
-      await connectionRepo.delete({ id: In(workshopConnectionIdsToDelete) });
-    }
-
-    if (workshopObjectIdsToDelete.length > 0) {
+    if (objectsToDelete.length > 0) {
       await connectionRepo
         .createQueryBuilder()
         .delete()
-        .from(CanvasConnection)
-        .where('canvas_id = :canvasId', { canvasId })
+        .from(WorkshopConnection)
+        .where('workshop_id = :workshopId', { workshopId })
         .andWhere(
           '(source_object_id = ANY(:objectIds) OR target_object_id = ANY(:objectIds))',
-          { objectIds: workshopObjectIdsToDelete },
+          { objectIds: objectsToDelete },
         )
         .execute();
 
-      await objectRepo.delete({
-        id: In(workshopObjectIdsToDelete),
-      });
+      await objectRepo.delete({ id: In(objectsToDelete) });
     }
 
-    const nextObjects: CanvasObject[] = [];
-    for (const submittedObject of dto.objects) {
-      const objectEntity = this.toCanvasObjectEntity(canvasId, submittedObject);
-      nextObjects.push(objectEntity);
-    }
-
+    // Upsert objects & connections from client payload
+    const nextObjects: WorkshopObject[] = dto.objects.map((obj) =>
+      this.toWorkshopObjectEntity(workshopId, obj),
+    );
     await objectRepo.save(nextObjects);
 
-    const nextConnections: CanvasConnection[] = dto.connections.map(
-      (connection) => this.toCanvasConnectionEntity(canvasId, connection),
+    const nextConnections: WorkshopConnection[] = dto.connections.map((conn) =>
+      this.toWorkshopConnectionEntity(workshopId, conn),
     );
     await connectionRepo.save(nextConnections);
 
-    const canvas = await canvasRepo.findOneOrFail({
-      where: { id: canvasId },
-      relations: {
-        owner: true,
-      },
+    // Update viewport
+    const workshop = await workshopRepo.findOneOrFail({
+      where: { id: workshopId },
     });
-
-    canvas.viewportX = dto.viewport.x;
-    canvas.viewportY = dto.viewport.y;
-    canvas.viewportZoom = dto.viewport.scale;
-
-    await canvasRepo.save(canvas);
-
-    await canvasRepo
-      .createQueryBuilder()
-      .update(Canvas)
-      .set({ updatedAt: () => 'CURRENT_TIMESTAMP' })
-      .where('id = :canvasId', { canvasId })
-      .execute();
+    workshop.viewportX = dto.viewport.x;
+    workshop.viewportY = dto.viewport.y;
+    workshop.viewportZoom = dto.viewport.scale;
+    await workshopRepo.save(workshop);
   }
 
-  private async loadWorkshopCanvas(
-    canvasId: string,
+  private async loadWorkshop(
+    workshopId: string,
     manager: DataSource['manager'] = this.dataSource.manager,
-  ): Promise<Canvas> {
-    const canvasRepo = manager.getRepository(Canvas);
-    const objectRepo = manager.getRepository(CanvasObject);
-    const connectionRepo = manager.getRepository(CanvasConnection);
+  ): Promise<Workshop> {
+    const workshopRepo = manager.getRepository(Workshop);
+    const objectRepo = manager.getRepository(WorkshopObject);
+    const connectionRepo = manager.getRepository(WorkshopConnection);
 
-    const canvas = await canvasRepo.findOne({
-      where: { id: canvasId },
-      relations: {
-        owner: true,
-      },
-    });
-
-    if (!canvas) {
-      throw new NotFoundException('Canvas not found');
+    const workshop = await workshopRepo.findOne({ where: { id: workshopId } });
+    if (!workshop) {
+      throw new NotFoundException('Workshop not found');
     }
 
-    const hydratedCanvas = canvas as Canvas & {
-      objects?: CanvasObject[];
-      connections?: CanvasConnection[];
-    };
-
-    const objects = await objectRepo.find({
-      where: {
-        canvasId,
-      },
-      relations: {
-        task: true,
-        boardColumn: true,
-      },
-      order: {
-        zIndex: 'ASC',
-        createdAt: 'ASC',
-      },
+    workshop.objects = await objectRepo.find({
+      where: { workshopId },
+      order: { zIndex: 'ASC', createdAt: 'ASC' },
     });
 
-    const workshopObjects = objects.filter((object) =>
-      WORKSHOP_OBJECT_TYPES.includes(object.type),
-    );
-    const reconciledObjects = await this.reconcileWorkshopObjects(
-      canvas.projectId,
-      workshopObjects,
-      manager,
-    );
-
-    hydratedCanvas.objects = reconciledObjects;
-    hydratedCanvas.connections = (
-      await connectionRepo.find({
-        where: {
-          canvasId,
-        },
-        order: {
-          createdAt: 'ASC',
-        },
-      })
-    ).filter((connection) => {
-      const source = reconciledObjects.find(
-        (object) => object.id === connection.sourceObjectId,
-      );
-      const target = reconciledObjects.find(
-        (object) => object.id === connection.targetObjectId,
-      );
-      return Boolean(source && target);
+    workshop.connections = await connectionRepo.find({
+      where: { workshopId },
+      order: { createdAt: 'ASC' },
     });
 
-    return hydratedCanvas;
+    return workshop;
   }
 
-  private async reconcileWorkshopObjects(
-    projectId: string,
-    workshopObjects: CanvasObject[],
-    manager: DataSource['manager'],
-  ): Promise<CanvasObject[]> {
-    const boardColumnIds = Array.from(
-      new Set(
-        workshopObjects
-          .filter((object) => object.type === CanvasObjectType.SECTION_FRAME)
-          .map((object) => object.boardColumnId)
-          .filter((id): id is string => Boolean(id)),
-      ),
-    );
-    const taskIds = Array.from(
-      new Set(
-        workshopObjects
-          .filter((object) => object.type === CanvasObjectType.TASK_CARD)
-          .map((object) => object.taskId)
-          .filter((id): id is string => Boolean(id)),
-      ),
-    );
-
-    const boardColumns = boardColumnIds.length
-      ? await manager.getRepository(Board).find({
-          where: { id: In(boardColumnIds) },
-          relations: { project: true },
-        })
-      : [];
-    const boardById = new Map(boardColumns.map((board) => [board.id, board]));
-
-    const tasks = taskIds.length
-      ? await manager.getRepository(Task).find({
-          where: { id: In(taskIds) },
-          relations: {
-            project: true,
-            boardColumn: true,
-          },
-        })
-      : [];
-    const taskById = new Map(tasks.map((task) => [task.id, task]));
-
-    const featureByBoardId = new Map<string, CanvasObject>();
-    for (const object of workshopObjects) {
-      if (object.type === CanvasObjectType.SECTION_FRAME) {
-        featureByBoardId.set(object.boardColumnId ?? '', object);
-      }
-    }
-
-    const reconciledObjects: CanvasObject[] = [];
-    for (const object of workshopObjects) {
-      if (object.type === CanvasObjectType.SECTION_FRAME) {
-        const boardColumnId = object.boardColumnId;
-        if (!boardColumnId) {
-          reconciledObjects.push(object);
-          continue;
-        }
-
-        const board = boardById.get(boardColumnId);
-        if (!board || board.project.id !== projectId) {
-          continue;
-        }
-
-        reconciledObjects.push({
-          ...object,
-          data: {
-            ...(object.data ?? {}),
-            title: board.name,
-            borderColor: board.color,
-          },
-        });
-        continue;
-      }
-
-      const taskId = object.taskId;
-      if (!taskId) {
-        reconciledObjects.push(object);
-        continue;
-      }
-
-      const task = taskById.get(taskId);
-      if (!task || task.project.id !== projectId) {
-        continue;
-      }
-
-      const boardColumn = task.boardColumn;
-      const dueDate =
-        task.deadline instanceof Date
-          ? task.deadline.toISOString().slice(0, 10)
-          : task.deadline
-            ? new Date(task.deadline).toISOString().slice(0, 10)
-            : undefined;
-
-      if (!boardColumn || boardColumn.project.id !== projectId) {
-        reconciledObjects.push({
-          ...object,
-          data: {
-            ...(object.data ?? {}),
-            title: task.title,
-            description: task.description ?? undefined,
-            dueDate,
-          },
-        });
-        continue;
-      }
-
-      const feature = featureByBoardId.get(boardColumn.id);
-      if (!feature) {
-        reconciledObjects.push({
-          ...object,
-          data: {
-            ...(object.data ?? {}),
-            title: task.title,
-            description: task.description ?? undefined,
-            dueDate,
-          },
-        });
-        continue;
-      }
-
-      reconciledObjects.push({
-        ...object,
-        data: {
-          ...(object.data ?? {}),
-          title: task.title,
-          description: task.description ?? undefined,
-          dueDate,
-          featureId: feature.id,
-        },
-      });
-    }
-
-    return reconciledObjects;
-  }
-
-  private toCanvasObjectEntity(
-    canvasId: string,
+  private toWorkshopObjectEntity(
+    workshopId: string,
     object: SaveWorkshopCanvasObjectDto,
-  ): CanvasObject {
+  ): WorkshopObject {
     const base = {
       id: object.id,
-      canvasId,
+      workshopId,
       x: object.x,
       y: object.y,
       width: object.width,
@@ -562,16 +395,12 @@ export class WorkshopCanvasService {
       rotation: object.rotation,
       zIndex: object.zIndex,
       data: null,
-      taskId: null,
-      boardColumnId: null,
-    } as DeepPartial<CanvasObject>;
+    } as DeepPartial<WorkshopObject>;
 
     if (object.type === 'SECTION_FRAME') {
       const data = object.data as SaveWorkshopFeatureDataDto;
       return Object.assign(base, {
         type: CanvasObjectType.SECTION_FRAME,
-        taskId: null,
-        boardColumnId: data.boardColumnId ?? null,
         data: {
           kind: 'Feature',
           title: data.title,
@@ -579,46 +408,43 @@ export class WorkshopCanvasService {
           backgroundColor: data.backgroundColor,
           borderColor: data.borderColor,
         },
-      }) as CanvasObject;
+      }) as WorkshopObject;
     }
 
     if (object.type === 'TASK_CARD') {
       const data = object.data as SaveWorkshopTaskDataDto;
       return Object.assign(base, {
         type: CanvasObjectType.TASK_CARD,
-        taskId: data.taskId ?? null,
-        boardColumnId: null,
         data: {
           kind: 'Task',
           featureId: data.featureId,
           title: data.title,
           description: data.description ?? undefined,
           dueDate: data.dueDate ?? undefined,
+          priority: data.priority ?? 'MEDIUM',
         },
-      }) as CanvasObject;
+      }) as WorkshopObject;
     }
 
     const data = object.data as SaveWorkshopStickyNoteDataDto;
     return Object.assign(base, {
       type: CanvasObjectType.STICKY_NOTE,
-      taskId: null,
-      boardColumnId: null,
       data: {
         kind: 'Note',
         content: data.content,
         color: data.color,
         fontSize: data.fontSize,
       },
-    }) as CanvasObject;
+    }) as WorkshopObject;
   }
 
-  private toCanvasConnectionEntity(
-    canvasId: string,
+  private toWorkshopConnectionEntity(
+    workshopId: string,
     connection: SaveWorkshopCanvasConnectionDto,
-  ): CanvasConnection {
+  ): WorkshopConnection {
     return {
       id: connection.id,
-      canvasId,
+      workshopId,
       sourceObjectId: connection.fromObjectId,
       targetObjectId: connection.toObjectId,
       type: connection.style.type as CanvasConnectionType,
@@ -629,6 +455,6 @@ export class WorkshopCanvasService {
           strokeWidth: connection.style.strokeWidth,
         },
       },
-    } as unknown as CanvasConnection;
+    } as unknown as WorkshopConnection;
   }
 }

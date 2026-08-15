@@ -28,4 +28,20 @@ export class ProjectAuthEvaluator {
 
     return actor.role.level > target.role.level;
   }
+
+  static canModifyResource(
+    actor: ProjectMember,
+    creatorUserId: string,
+    creatorRoleLevel: number | null,
+  ): boolean {
+    if (!actor || !actor.role) return false;
+
+    if (actor.role.level === 100) return true;
+
+    if (actor.user?.id === creatorUserId) return true;
+
+    const targetLevel = creatorRoleLevel ?? 0;
+
+    return actor.role.level > targetLevel;
+  }
 }

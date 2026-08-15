@@ -3,7 +3,7 @@ import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 export class SaveWorkshopFeatureDataDto {
   @IsOptional()
   @IsString()
-  @MaxLength(36)
+  @MaxLength(255)
   boardColumnId?: string;
 
   @IsString()

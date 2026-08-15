@@ -18,15 +18,20 @@ export interface RequestCookies {
   csrf_token?: string;
 }
 
-function getCookieOptions(maxAge: number, path?: string) {
-  const isProd = process.env.NODE_ENV === 'production';
+function getCookieOptions(maxAge: number, path = '/') {
+  const isProd =
+    process.env.NODE_ENV === 'production' ||
+    Boolean(
+      process.env.FRONTEND_URL &&
+        process.env.FRONTEND_URL.startsWith('https://'),
+    );
 
   return {
     httpOnly: true,
     secure: isProd,
     sameSite: isProd ? ('none' as const) : ('lax' as const),
     maxAge,
-    ...(path ? { path } : {}),
+    path,
   };
 }
 
@@ -57,10 +62,16 @@ export function setAuthCookies(
 }
 
 export function clearAuthCookies(res: Response): void {
-  const isProd = process.env.NODE_ENV === 'production';
+  const isProd =
+    process.env.NODE_ENV === 'production' ||
+    Boolean(
+      process.env.FRONTEND_URL &&
+        process.env.FRONTEND_URL.startsWith('https://'),
+    );
   const cookieOptions = {
     secure: isProd,
     sameSite: isProd ? ('none' as const) : ('lax' as const),
+    path: '/',
   };
 
   res.clearCookie('access_token', cookieOptions);

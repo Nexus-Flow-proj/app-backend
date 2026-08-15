@@ -60,27 +60,37 @@ export class BoardsController {
 
   // ─── Update Column ──────────────────────────────────────
 
-  @Patch('boards/:id')
+  @Patch('projects/:projectId/boards/:id')
   @UseGuards(CsrfGuard)
   @RequirePermission('board', 'manageColumns')
   @Serialize(BoardColumnResponseDto)
   async updateColumn(
+    @Param('projectId') projectId: string,
     @Param('id') id: string,
     @Body() body: UpdateBoardColumnDto,
     @CurrentUser() user: User,
   ) {
-    const data = await this.boardsService.updateColumn(id, body, user.id);
+    const data = await this.boardsService.updateColumn(
+      id,
+      body,
+      user.id,
+      projectId,
+    );
     return { message: 'Board column updated successfully.', data };
   }
 
   // ─── Delete Column ──────────────────────────────────────
 
-  @Delete('boards/:id')
+  @Delete('projects/:projectId/boards/:id')
   @UseGuards(CsrfGuard)
   @RequirePermission('board', 'manageColumns')
   @HttpCode(HttpStatus.OK)
-  async deleteColumn(@Param('id') id: string, @CurrentUser() user: User) {
-    await this.boardsService.deleteColumn(id, user.id);
+  async deleteColumn(
+    @Param('projectId') projectId: string,
+    @Param('id') id: string,
+    @CurrentUser() user: User,
+  ) {
+    await this.boardsService.deleteColumn(id, user.id, projectId);
     return { message: 'Board column deleted successfully.', data: null };
   }
 

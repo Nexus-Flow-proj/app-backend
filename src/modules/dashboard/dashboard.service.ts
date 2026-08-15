@@ -4,7 +4,14 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Brackets, MoreThan, LessThanOrEqual, In, And } from 'typeorm';
+import {
+  Repository,
+  Brackets,
+  MoreThan,
+  LessThanOrEqual,
+  In,
+  And,
+} from 'typeorm';
 import { Task } from '@modules/tasks/entities/task.entity';
 import { Project } from '@modules/projects/entities/project.entity';
 import { ProjectMember } from '@modules/projects/entities/project-member.entity';
@@ -95,7 +102,10 @@ export class DashboardService {
       where: {
         assignee: { id: userId },
         status: TaskStatus.DONE,
-        updatedAt: And(MoreThan(fourteenDaysAgo), LessThanOrEqual(sevenDaysAgo)),
+        updatedAt: And(
+          MoreThan(fourteenDaysAgo),
+          LessThanOrEqual(sevenDaysAgo),
+        ),
       },
     });
 
@@ -250,19 +260,22 @@ export class DashboardService {
 
     let progressMap = new Map<string, { total: number; completed: number }>();
     if (topProjectIds.length > 0) {
-      const taskCounts: { projectId: string; total: string; completed: string }[] =
-        await this.taskRepo
-          .createQueryBuilder('task')
-          .select('task.project_id', 'projectId')
-          .addSelect('COUNT(*)::int', 'total')
-          .addSelect(
-            `COUNT(*) FILTER (WHERE task.status = :done)::int`,
-            'completed',
-          )
-          .where('task.project_id IN (:...topProjectIds)', { topProjectIds })
-          .setParameter('done', TaskStatus.DONE)
-          .groupBy('task.project_id')
-          .getRawMany();
+      const taskCounts: {
+        projectId: string;
+        total: string;
+        completed: string;
+      }[] = await this.taskRepo
+        .createQueryBuilder('task')
+        .select('task.project_id', 'projectId')
+        .addSelect('COUNT(*)::int', 'total')
+        .addSelect(
+          `COUNT(*) FILTER (WHERE task.status = :done)::int`,
+          'completed',
+        )
+        .where('task.project_id IN (:...topProjectIds)', { topProjectIds })
+        .setParameter('done', TaskStatus.DONE)
+        .groupBy('task.project_id')
+        .getRawMany();
 
       for (const row of taskCounts) {
         progressMap.set(row.projectId, {
@@ -498,7 +511,6 @@ export class DashboardService {
       );
     }
 
-    const oldStatus = task.status;
     task.status = completed ? TaskStatus.DONE : TaskStatus.IN_PROGRESS;
     await this.taskRepo.save(task);
 

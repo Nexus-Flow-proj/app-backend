@@ -5,27 +5,44 @@ export function mapTaskToApiTaskSummary(task: Task): ApiTaskSummary {
   return {
     id: task.id,
     title: task.title,
-    projectId: task.project.id,
+    projectId: task.project?.id ?? '',
     columnOrder: task.columnOrder,
     status: task.status,
     priority: task.priority,
 
-    boardColumn: {
-      id: task.boardColumn.id,
-      name: task.boardColumn.name,
-      sortOrder: task.boardColumn.sortOrder,
-      isProtected: task.boardColumn.isProtected,
-      color: task.boardColumn.color ?? null,
-      createdAt: task.boardColumn.createdAt,
-    },
+    boardColumn: task.boardColumn
+      ? {
+          id: task.boardColumn.id,
+          name: task.boardColumn.name,
+          sortOrder: task.boardColumn.sortOrder,
+          isProtected: task.boardColumn.isProtected,
+          color: task.boardColumn.color ?? null,
+          createdAt: task.boardColumn.createdAt,
+        }
+      : ({
+          id: '',
+          name: '',
+          sortOrder: 0,
+          isProtected: false,
+          color: null,
+          createdAt: new Date(),
+        } as any),
 
-    createdBy: {
-      id: task.createdBy.id,
-      email: task.createdBy.email,
-      firstName: task.createdBy.firstName,
-      lastName: task.createdBy.lastName,
-      avatarUrl: task.createdBy.avatarUrl ?? null,
-    },
+    createdBy: task.createdBy
+      ? {
+          id: task.createdBy.id,
+          email: task.createdBy.email,
+          firstName: task.createdBy.firstName,
+          lastName: task.createdBy.lastName,
+          avatarUrl: task.createdBy.avatarUrl ?? null,
+        }
+      : ({
+          id: '',
+          email: '',
+          firstName: '',
+          lastName: '',
+          avatarUrl: null,
+        } as any),
 
     assignee: task.assignee
       ? {
@@ -36,6 +53,12 @@ export function mapTaskToApiTaskSummary(task: Task): ApiTaskSummary {
           avatarUrl: task.assignee.avatarUrl ?? null,
         }
       : null,
+
+    dependencies:
+      task.dependencies?.map((dep) => ({
+        id: dep.id,
+        title: dep.title,
+      })) ?? [],
 
     commentsCount: task.comments?.length ?? 0,
     subtasksCount: task.subtasks?.length ?? 0,

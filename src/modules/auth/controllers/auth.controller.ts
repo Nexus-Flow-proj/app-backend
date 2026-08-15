@@ -53,11 +53,15 @@ export class AuthController {
     const { user, accessToken, refreshToken, csrfToken } =
       await this.authService.signUp(dto, ip);
 
-    setAuthCookies(res, { accessToken, refreshToken, csrfToken }, this.getCookieMaxAgeConfig());
+    setAuthCookies(
+      res,
+      { accessToken, refreshToken, csrfToken },
+      this.getCookieMaxAgeConfig(),
+    );
 
     return {
       message: 'Account registered successfully.',
-      data: { user },
+      data: { user, csrfToken },
     };
   }
 
@@ -72,21 +76,29 @@ export class AuthController {
     const { user, accessToken, refreshToken, csrfToken } =
       await this.authService.login(dto, ip);
 
-    setAuthCookies(res, { accessToken, refreshToken, csrfToken }, this.getCookieMaxAgeConfig());
+    setAuthCookies(
+      res,
+      { accessToken, refreshToken, csrfToken },
+      this.getCookieMaxAgeConfig(),
+    );
 
     return {
       message: 'Login successful.',
-      data: { user },
+      data: { user, csrfToken },
     };
   }
 
   @Get('me')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
-  async getMe(@CurrentUser() user: User) {
+  async getMe(@CurrentUser() user: User, @Req() req: Request) {
+    const cookies = req.cookies as RequestCookies;
     return {
       message: 'Current user fetched successfully.',
-      data: { user: await this.authService.getMe(user.id) },
+      data: {
+        user: await this.authService.getMe(user.id),
+        csrfToken: cookies.csrf_token,
+      },
     };
   }
 
@@ -121,6 +133,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const cookies = req.cookies as RequestCookies;
+    const csrfToken = cookies.csrf_token;
     const refreshToken = cookies.refresh_token;
     if (!refreshToken) {
       throw new UnauthorizedException('Missing refresh token');
@@ -129,7 +142,7 @@ export class AuthController {
     setAuthCookies(res, tokens, this.getCookieMaxAgeConfig());
     return {
       message: 'Token refreshed successfully.',
-      data: {},
+      data: { csrfToken },
     };
   }
 
@@ -172,8 +185,7 @@ export class AuthController {
     const frontendUrl = this.configService.get<string>('env.frontendUrl');
 
     if (!result.ok || !result.user) {
-      const redirectPath =
-        result.flow === 'signup' ? '/signup' : '/login';
+      const redirectPath = result.flow === 'signup' ? '/signup' : '/login';
       const errorMessage = encodeURIComponent(
         result.message ?? 'Google authentication failed.',
       );
@@ -185,7 +197,11 @@ export class AuthController {
     const { accessToken, refreshToken, csrfToken } =
       await this.authService.googleLogin(result.user, ip);
 
-    setAuthCookies(res, { accessToken, refreshToken, csrfToken }, this.getCookieMaxAgeConfig());
+    setAuthCookies(
+      res,
+      { accessToken, refreshToken, csrfToken },
+      this.getCookieMaxAgeConfig(),
+    );
     res.redirect(`${frontendUrl}/dashboard`);
   }
 }

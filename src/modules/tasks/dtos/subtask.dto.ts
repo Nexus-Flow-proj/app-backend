@@ -1,9 +1,28 @@
-import { Expose, Transform } from 'class-transformer';
-import { IsBoolean, IsOptional, IsString } from 'class-validator';
+import { Expose, Transform, Type } from 'class-transformer';
+import {
+  IsArray,
+  IsBoolean,
+  IsInt,
+  IsOptional,
+  IsString,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 
-export class CreateSubTaskDto {
+export class CreateSubTaskItemDto {
   @IsString()
   title!: string;
+
+  @IsInt()
+  @Min(1)
+  sortOrder!: number;
+}
+
+export class CreateSubTaskDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateSubTaskItemDto)
+  subtasks!: CreateSubTaskItemDto[];
 }
 
 export class UpdateSubTaskDto {

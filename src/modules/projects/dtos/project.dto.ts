@@ -22,6 +22,9 @@ export class ProjectDto {
   adminId!: string | null;
 
   @Expose()
+  draftId!: string | null;
+
+  @Expose()
   memberCount!: number;
 
   @Expose()

@@ -6,6 +6,8 @@ import {
   Entity,
   Index,
   JoinColumn,
+  JoinTable,
+  ManyToMany,
   ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
@@ -38,8 +40,15 @@ export interface ApiAttachment {
   created_at: string;
 }
 
+export interface TaskDependencySummary {
+  id: string;
+  title: string;
+}
+
 @Entity('tasks')
 @Index(['project', 'columnOrder'])
+@Index(['boardColumn', 'columnOrder'])
+@Index(['project', 'status'])
 export class Task {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -55,6 +64,10 @@ export class Task {
   @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'assignee_id' })
   assignee!: User | null;
+
+  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'assigned_by_id' })
+  assignedBy!: User | null;
 
   @Column({ type: 'varchar' })
   title!: string;
@@ -77,6 +90,14 @@ export class Task {
   @Column({ type: 'enum', enum: TaskPriority, default: TaskPriority.MEDIUM })
   priority: TaskPriority;
 
+  @ManyToMany(() => Task)
+  @JoinTable({
+    name: 'task_dependencies',
+    joinColumn: { name: 'task_id', referencedColumnName: 'id' },
+    inverseJoinColumn: { name: 'dependency_id', referencedColumnName: 'id' },
+  })
+  dependencies: Task[];
+
   @ManyToOne(() => Board, { nullable: false, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'board_column_id' })
   boardColumn: Board;
@@ -89,6 +110,12 @@ export class Task {
 
   @Column({ type: 'jsonb', default: [] })
   attachments: ApiAttachment[];
+
+  @Column({ type: 'jsonb', nullable: true, default: null })
+  metadata!: Record<string, any> | null;
+
+  @Column({ name: 'generation_job_id', type: 'uuid', nullable: true })
+  generationJobId!: string | null;
 
   @OneToMany(() => SubTask, (subtask) => subtask.task)
   subtasks: SubTask[];

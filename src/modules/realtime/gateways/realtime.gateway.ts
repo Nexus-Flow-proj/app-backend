@@ -20,12 +20,7 @@ import { ProjectRoomDto } from '../dtos/project-room.dto';
 import { SOCKET_EVENTS } from '../constants/socket-events';
 import { PresenceTrackerService } from '../services/presence-tracker.service';
 
-@WebSocketGateway({
-  cors: {
-    origin: true,
-    credentials: true,
-  },
-})
+@WebSocketGateway()
 export class RealtimeGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
 {

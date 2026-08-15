@@ -29,6 +29,7 @@ export interface ApiTaskSummary {
   created_at: Date;
   updated_at: Date;
   assignee: ApiUserSummary | null;
+  dependencies: { id: string; title: string }[];
   commentsCount: number;
   subtasksCount: number;
   attachmentsCount: number;

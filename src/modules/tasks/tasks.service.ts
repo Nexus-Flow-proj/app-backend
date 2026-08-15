@@ -7,11 +7,13 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
-import { Task } from './entities/task.entity';
+import { randomUUID } from 'crypto';
+import { Task, ApiAttachment, ApiUserSummary } from './entities/task.entity';
 import { SubTask } from './entities/subtask.entity';
 import { TaskComment } from './entities/task-comment.entity';
 import { TimeLog } from './entities/time-log.entity';
 import { ActivitiesService } from '@modules/activities/activities.service';
+import { StorageService } from '@shared/providers/storage/storage.service';
 import { TaskStatus } from './enums/task-status.enum';
 import { Project } from '@modules/projects/entities/project.entity';
 import { ProjectMember } from '@modules/projects/entities/project-member.entity';
@@ -55,6 +57,25 @@ import { NotificationType } from '@modules/notifications/enums/notification-type
 export class TasksService {
   private readonly logger = new Logger(TasksService.name);
 
+  /** Only the 5 user fields the DTOs / socket mappers actually expose */
+  private static readonly USER_SUMMARY_SELECT = {
+    id: true,
+    email: true,
+    firstName: true,
+    lastName: true,
+    avatarUrl: true,
+  } as const;
+
+  /** Shared select for boardColumn — covers DTO + socket mapper fields */
+  private static readonly BOARD_COLUMN_SELECT = {
+    id: true,
+    name: true,
+    sortOrder: true,
+    isProtected: true,
+    color: true,
+    createdAt: true,
+  } as const;
+
   constructor(
     @InjectRepository(Task) private taskRepo: Repository<Task>,
     @InjectRepository(User) private userRepo: Repository<User>,
@@ -68,6 +89,7 @@ export class TasksService {
     private activitiesService: ActivitiesService,
     private readonly notificationsService: NotificationsService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly storageService: StorageService,
   ) {}
 
   // ─── Helpers ───────────────────────────────────────────────────────────
@@ -95,6 +117,16 @@ export class TasksService {
     const column = await this.boardRepo.findOne({
       where: { id: boardColumnId },
       relations: { project: true },
+      select: {
+        id: true,
+        name: true,
+        sortOrder: true,
+        isProtected: true,
+        color: true,
+        createdAt: true,
+        updatedAt: true,
+        project: { id: true },
+      },
     });
     if (!column) throw new NotFoundException('Board column not found');
     if (column.project.id !== projectId) {
@@ -245,13 +277,42 @@ export class TasksService {
         createdBy: true,
         assignee: true,
         boardColumn: true,
+        dependencies: true,
         subtasks: true,
-        comments: { user: true },
+        comments: true,
+      },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        label: true,
+        deadline: true,
+        type: true,
+        status: true,
+        priority: true,
+        columnOrder: true,
+        source: true,
+        attachments: true,
+        createdAt: true,
+        updatedAt: true,
+        project: { id: true },
+        createdBy: TasksService.USER_SUMMARY_SELECT,
+        assignee: TasksService.USER_SUMMARY_SELECT,
+        boardColumn: TasksService.BOARD_COLUMN_SELECT,
+        dependencies: { id: true, title: true },
+        subtasks: {
+          id: true,
+          title: true,
+          isCompleted: true,
+          sortOrder: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+        comments: { id: true },
       },
       order: {
         columnOrder: 'ASC',
         subtasks: { sortOrder: 'ASC', createdAt: 'ASC' },
-        comments: { createdAt: 'ASC' },
       },
       take: limit,
       skip: (page - 1) * limit,
@@ -263,7 +324,7 @@ export class TasksService {
   async listTasksByColumn(columnId: string, userId: string) {
     const column = await this.boardRepo.findOne({
       where: { id: columnId },
-      relations: { project: true },
+      select: { id: true },
     });
 
     if (!column) throw new NotFoundException('Board column not found');
@@ -275,13 +336,42 @@ export class TasksService {
         createdBy: true,
         assignee: true,
         boardColumn: true,
+        dependencies: true,
         subtasks: true,
-        comments: { user: true },
+        comments: true,
+      },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        label: true,
+        deadline: true,
+        type: true,
+        status: true,
+        priority: true,
+        columnOrder: true,
+        source: true,
+        attachments: true,
+        createdAt: true,
+        updatedAt: true,
+        project: { id: true },
+        createdBy: TasksService.USER_SUMMARY_SELECT,
+        assignee: TasksService.USER_SUMMARY_SELECT,
+        boardColumn: TasksService.BOARD_COLUMN_SELECT,
+        dependencies: { id: true, title: true },
+        subtasks: {
+          id: true,
+          title: true,
+          isCompleted: true,
+          sortOrder: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+        comments: { id: true },
       },
       order: {
         columnOrder: 'ASC',
         subtasks: { sortOrder: 'ASC', createdAt: 'ASC' },
-        comments: { createdAt: 'ASC' },
       },
     });
   }
@@ -292,7 +382,12 @@ export class TasksService {
     dto: CreateTaskDto,
     userId: string,
   ) {
-    const { assigneeId, assignee: assigneeInput, ...scalarFields } = dto;
+    const {
+      assigneeId,
+      assignee: assigneeInput,
+      dependencyIds,
+      ...scalarFields
+    } = dto;
     const resolvedAssigneeId =
       assigneeInput !== undefined ? assigneeInput : assigneeId;
     const creatorId = userId;
@@ -332,6 +427,19 @@ export class TasksService {
       );
     }
 
+    let dependencies: Task[] = [];
+    if (dependencyIds && dependencyIds.length > 0) {
+      const uniqueDepIds = Array.from(new Set(dependencyIds));
+      dependencies = await this.taskRepo.find({
+        where: uniqueDepIds.map((id) => ({ id, project: { id: projectId } })),
+      });
+      if (dependencies.length !== uniqueDepIds.length) {
+        throw new BadRequestException(
+          'One or more dependency tasks were not found in this project',
+        );
+      }
+    }
+
     const task = this.taskRepo.create({
       ...scalarFields,
       deadline: dto.deadline ? new Date(dto.deadline) : null,
@@ -340,28 +448,38 @@ export class TasksService {
       createdBy: currentUser!,
       assignee,
       boardColumn,
+      dependencies,
+      assignedBy: assignee ? currentUser : null,
       subtasks: [],
       comments: [],
       timeLogs: [],
     });
 
     const savedTask = await this.taskRepo.save(task);
+
+    // Fire side-effects in parallel — they are independent
+    const sideEffects: Promise<void>[] = [];
     if (assignee && assignee.id !== creatorId) {
-      await this.createTaskAssignedNotification(
-        savedTask.id,
-        savedTask.title,
-        projectId,
-        assignee.id,
-        creatorId,
+      sideEffects.push(
+        this.createTaskAssignedNotification(
+          savedTask.id,
+          savedTask.title,
+          projectId,
+          assignee.id,
+          creatorId,
+        ),
       );
     }
-    await this.activitiesService.logActivity(
-      userId,
-      projectId,
-      `created task: ${savedTask.title}`,
-      'task',
-      savedTask.id,
+    sideEffects.push(
+      this.activitiesService.logActivity(
+        userId,
+        projectId,
+        `created task: ${savedTask.title}`,
+        'task',
+        savedTask.id,
+      ),
     );
+    await Promise.all(sideEffects);
 
     const payload: TaskCreatedPayload = {
       projectId: task.project.id,
@@ -383,12 +501,58 @@ export class TasksService {
         createdBy: true,
         assignee: true,
         boardColumn: true,
+        dependencies: true,
         subtasks: true,
         comments: {
           user: true,
         },
         timeLogs: {
           user: true,
+        },
+      },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        label: true,
+        deadline: true,
+        type: true,
+        status: true,
+        priority: true,
+        columnOrder: true,
+        source: true,
+        attachments: true,
+        metadata: true,
+        generationJobId: true,
+        createdAt: true,
+        updatedAt: true,
+        project: { id: true },
+        createdBy: TasksService.USER_SUMMARY_SELECT,
+        assignee: TasksService.USER_SUMMARY_SELECT,
+        boardColumn: TasksService.BOARD_COLUMN_SELECT,
+        dependencies: { id: true, title: true },
+        subtasks: {
+          id: true,
+          title: true,
+          isCompleted: true,
+          sortOrder: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+        comments: {
+          id: true,
+          body: true,
+          createdAt: true,
+          updatedAt: true,
+          user: TasksService.USER_SUMMARY_SELECT,
+        },
+        timeLogs: {
+          id: true,
+          durationMin: true,
+          loggedDate: true,
+          note: true,
+          createdAt: true,
+          user: TasksService.USER_SUMMARY_SELECT,
         },
       },
       order: {
@@ -402,16 +566,54 @@ export class TasksService {
     return task;
   }
 
-  async updateTask(taskId: string, dto: UpdateTaskDto, userId: string) {
+  async updateTask(taskId: string, dto: UpdateTaskDto, currentUser: User) {
     const task = await this.taskRepo.findOne({
       where: { id: taskId },
       relations: {
         project: true,
         createdBy: true,
         assignee: true,
+        dependencies: true,
         subtasks: true,
         boardColumn: true,
         comments: { user: true },
+      },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        label: true,
+        deadline: true,
+        type: true,
+        status: true,
+        priority: true,
+        columnOrder: true,
+        source: true,
+        attachments: true,
+        metadata: true,
+        generationJobId: true,
+        createdAt: true,
+        updatedAt: true,
+        project: { id: true },
+        createdBy: TasksService.USER_SUMMARY_SELECT,
+        assignee: TasksService.USER_SUMMARY_SELECT,
+        boardColumn: TasksService.BOARD_COLUMN_SELECT,
+        dependencies: { id: true, title: true },
+        subtasks: {
+          id: true,
+          title: true,
+          isCompleted: true,
+          sortOrder: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+        comments: {
+          id: true,
+          body: true,
+          createdAt: true,
+          updatedAt: true,
+          user: TasksService.USER_SUMMARY_SELECT,
+        },
       },
       order: {
         subtasks: { sortOrder: 'ASC', createdAt: 'ASC' },
@@ -426,6 +628,7 @@ export class TasksService {
       assigneeId,
       assignee: assigneeInput,
       boardColumnId,
+      dependencyIds,
       ...scalarFields
     } = dto;
     const resolvedAssigneeId =
@@ -444,6 +647,7 @@ export class TasksService {
           resolvedAssigneeId,
         );
         task.assignee = assignee;
+        task.assignedBy = currentUser;
       }
     }
 
@@ -452,6 +656,29 @@ export class TasksService {
         boardColumnId,
         task.project.id,
       );
+    }
+
+    if (dependencyIds !== undefined) {
+      if (dependencyIds.includes(taskId)) {
+        throw new BadRequestException('A task cannot depend on itself');
+      }
+      if (dependencyIds.length === 0) {
+        task.dependencies = [];
+      } else {
+        const uniqueDepIds = Array.from(new Set(dependencyIds));
+        const foundDeps = await this.taskRepo.find({
+          where: uniqueDepIds.map((id) => ({
+            id,
+            project: { id: task.project.id },
+          })),
+        });
+        if (foundDeps.length !== uniqueDepIds.length) {
+          throw new BadRequestException(
+            'One or more dependency tasks were not found in this project',
+          );
+        }
+        task.dependencies = foundDeps;
+      }
     }
 
     if (scalarFields.deadline !== undefined) {
@@ -466,66 +693,91 @@ export class TasksService {
 
     const savedTask = await this.taskRepo.save(task);
     const newStatus = savedTask.status;
+    const newAssigneeId = savedTask.assignee?.id ?? null;
+
+    // Fire all side-effects in parallel — they are independent
+    const sideEffects: Promise<void>[] = [];
+
     if (oldStatus !== TaskStatus.DONE && newStatus === TaskStatus.DONE) {
       const completedRecipientId = savedTask.createdBy?.id;
       if (completedRecipientId) {
-        await this.createTaskCompletedNotification(
-          savedTask.id,
-          savedTask.title,
-          savedTask.project.id,
-          completedRecipientId,
-          userId,
+        sideEffects.push(
+          this.createTaskCompletedNotification(
+            savedTask.id,
+            savedTask.title,
+            savedTask.project.id,
+            completedRecipientId,
+            currentUser.id,
+          ),
         );
       }
     }
-    const newAssigneeId = savedTask.assignee?.id ?? null;
+
     if (oldAssigneeId !== newAssigneeId) {
       if (oldAssigneeId && !newAssigneeId) {
-        await this.createTaskUnassignedNotification(
-          savedTask.id,
-          savedTask.title,
-          savedTask.project.id,
-          oldAssigneeId,
-          userId,
+        sideEffects.push(
+          this.createTaskUnassignedNotification(
+            savedTask.id,
+            savedTask.title,
+            savedTask.project.id,
+            oldAssigneeId,
+            currentUser.id,
+          ),
         );
       } else if (!oldAssigneeId && newAssigneeId) {
-        await this.createTaskAssignedNotification(
-          savedTask.id,
-          savedTask.title,
-          savedTask.project.id,
-          newAssigneeId,
-          userId,
+        sideEffects.push(
+          this.createTaskAssignedNotification(
+            savedTask.id,
+            savedTask.title,
+            savedTask.project.id,
+            newAssigneeId,
+            currentUser.id,
+          ),
         );
-      } else if (oldAssigneeId && newAssigneeId && oldAssigneeId !== newAssigneeId) {
-        await this.createTaskUnassignedNotification(
-          savedTask.id,
-          savedTask.title,
-          savedTask.project.id,
-          oldAssigneeId,
-          userId,
+      } else if (
+        oldAssigneeId &&
+        newAssigneeId &&
+        oldAssigneeId !== newAssigneeId
+      ) {
+        sideEffects.push(
+          this.createTaskUnassignedNotification(
+            savedTask.id,
+            savedTask.title,
+            savedTask.project.id,
+            oldAssigneeId,
+            currentUser.id,
+          ),
         );
-        await this.createTaskAssignedNotification(
-          savedTask.id,
-          savedTask.title,
-          savedTask.project.id,
-          newAssigneeId,
-          userId,
+        sideEffects.push(
+          this.createTaskAssignedNotification(
+            savedTask.id,
+            savedTask.title,
+            savedTask.project.id,
+            newAssigneeId,
+            currentUser.id,
+          ),
         );
       }
     }
+
     let message = `updated task: ${savedTask.title}`;
     if (dto.status && dto.status !== oldStatus) {
       const action =
         dto.status === TaskStatus.DONE ? 'completed' : 'updated status of';
       message = `${action} task: ${savedTask.title}`;
     }
-    await this.activitiesService.logActivity(
-      userId,
-      savedTask.project.id,
-      message,
-      'task',
-      savedTask.id,
+    sideEffects.push(
+      this.activitiesService.logActivity(
+        currentUser.id,
+        savedTask.project.id,
+        message,
+        'task',
+        savedTask.id,
+      ),
     );
+
+    await Promise.all(sideEffects);
+
     const payload: TaskUpdatedPayload = {
       projectId: task.project.id,
       task: mapTaskToApiTaskSummary(savedTask),
@@ -542,16 +794,21 @@ export class TasksService {
     const task = await this.taskRepo.findOne({
       where: { id: taskId },
       relations: { project: true },
+      select: { id: true, title: true, project: { id: true } },
     });
     if (!task) throw new NotFoundException('Task not found');
-    await this.taskRepo.delete({ id: taskId });
-    await this.activitiesService.logActivity(
-      userId,
-      task.project.id,
-      `deleted task: ${task.title}`,
-      'task',
-      taskId,
-    );
+
+    // Delete and log activity in parallel — activity references title, not the DB row
+    await Promise.all([
+      this.taskRepo.delete({ id: taskId }),
+      this.activitiesService.logActivity(
+        userId,
+        task.project.id,
+        `deleted task: ${task.title}`,
+        'task',
+        taskId,
+      ),
+    ]);
 
     const payload: TaskDeletedPayload = {
       projectId: task.project.id,
@@ -566,7 +823,7 @@ export class TasksService {
 
   // ─── Subtasks ──────────────────────────────────────────────────────────
 
-  async createSubtask(taskId: string, dto: CreateSubTaskDto, userId: string) {
+  async createSubtasks(taskId: string, dto: CreateSubTaskDto, userId: string) {
     const task = await this.getTaskOrFail(taskId);
 
     const maxQuery = await this.subtaskRepo
@@ -575,27 +832,42 @@ export class TasksService {
       .where('subtask.task = :taskId', { taskId: task.id })
       .getRawOne();
 
-    const nextSortOrder = maxQuery?.max != null ? Number(maxQuery.max) + 1 : 1;
+    let currentMaxSort = maxQuery?.max != null ? Number(maxQuery.max) : 0;
 
-    const subtask = this.subtaskRepo.create({
-      title: dto.title,
-      isCompleted: false,
-      task,
-      sortOrder: nextSortOrder,
+    const subtasksToCreate = dto.subtasks.map((item) => {
+      let finalSortOrder: number;
+
+      if (item.sortOrder != null) {
+        finalSortOrder = item.sortOrder;
+        currentMaxSort = Math.max(currentMaxSort, item.sortOrder);
+      } else {
+        currentMaxSort += 1;
+        finalSortOrder = currentMaxSort;
+      }
+
+      return this.subtaskRepo.create({
+        title: item.title,
+        sortOrder: finalSortOrder,
+        isCompleted: false,
+        task,
+      });
     });
 
-    const savedSubtask = await this.subtaskRepo.save(subtask);
-    
-    const payload: SubtaskCreatedPayload = {
-      projectId: task.project.id,
-      taskId: task.id,
-      subtask: mapSubtaskToApiSubtask(savedSubtask),
-    };
-    this.eventEmitter.emit(
-      DOMAIN_EVENTS.SUBTASK.CREATED,
-      new SubtaskCreatedEvent(payload),
-    );
-    return savedSubtask;
+    const savedSubtasks = await this.subtaskRepo.save(subtasksToCreate);
+
+    for (const savedSubtask of savedSubtasks) {
+      const payload: SubtaskCreatedPayload = {
+        projectId: task.project.id,
+        taskId: task.id,
+        subtask: mapSubtaskToApiSubtask(savedSubtask),
+      };
+      this.eventEmitter.emit(
+        DOMAIN_EVENTS.SUBTASK.CREATED,
+        new SubtaskCreatedEvent(payload),
+      );
+    }
+
+    return savedSubtasks;
   }
 
   async updateSubtask(
@@ -652,22 +924,23 @@ export class TasksService {
   // ─── Comments ──────────────────────────────────────────────────────────
 
   async createComment(taskId: string, dto: CreateCommentDto, userId: string) {
-    const task = await this.taskRepo.findOne({
-      where: { id: taskId },
-      relations: { project: true, assignee: true },
-    });
+    const [task, currentUser] = await Promise.all([
+      this.taskRepo.findOne({
+        where: { id: taskId },
+        relations: { project: true, assignee: true },
+        select: {
+          id: true,
+          title: true,
+          project: { id: true },
+          assignee: { id: true },
+        },
+      }),
+      this.userRepo.findOne({
+        where: { id: userId },
+        select: TasksService.USER_SUMMARY_SELECT,
+      }),
+    ]);
     if (!task) throw new NotFoundException('Task not found');
-
-    const currentUser = await this.userRepo.findOne({
-      where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        avatarUrl: true,
-      },
-    });
     if (!currentUser) throw new NotFoundException('User not found');
 
     const comment = this.taskCommentRepo.create({
@@ -677,23 +950,32 @@ export class TasksService {
     });
 
     const savedComment = await this.taskCommentRepo.save(comment);
+
+    // Fire side-effects in parallel — they are independent
+    const sideEffects: Promise<void>[] = [];
     if (task.assignee?.id) {
-      await this.createCommentAddedNotification(
-        task.id,
-        task.title,
-        savedComment.id,
-        task.project.id,
-        task.assignee.id,
-        userId,
+      sideEffects.push(
+        this.createCommentAddedNotification(
+          task.id,
+          task.title,
+          savedComment.id,
+          task.project.id,
+          task.assignee.id,
+          userId,
+        ),
       );
     }
-    await this.activitiesService.logActivity(
-      userId,
-      task.project.id,
-      `added a comment on: ${task.title}`,
-      'comment',
-      savedComment.id,
+    sideEffects.push(
+      this.activitiesService.logActivity(
+        userId,
+        task.project.id,
+        `added a comment on: ${task.title}`,
+        'comment',
+        savedComment.id,
+      ),
     );
+    await Promise.all(sideEffects);
+
     const payload: CommentCreatedPayload = {
       projectId: task.project.id,
       taskId: task.id,
@@ -711,6 +993,13 @@ export class TasksService {
       where: { task: { id: taskId } },
       relations: {
         user: true,
+      },
+      select: {
+        id: true,
+        body: true,
+        createdAt: true,
+        updatedAt: true,
+        user: TasksService.USER_SUMMARY_SELECT,
       },
       order: { createdAt: 'ASC' },
       take: limit,
@@ -771,6 +1060,7 @@ export class TasksService {
     const task = await this.taskRepo.findOne({
       where: { id: taskId },
       relations: { project: true },
+      select: { id: true, project: { id: true } },
     });
     if (!task) throw new NotFoundException('Task not found');
 
@@ -791,6 +1081,14 @@ export class TasksService {
       relations: {
         user: true,
       },
+      select: {
+        id: true,
+        durationMin: true,
+        loggedDate: true,
+        note: true,
+        createdAt: true,
+        user: TasksService.USER_SUMMARY_SELECT,
+      },
       order: { createdAt: 'DESC' },
       take: limit,
       skip: (page - 1) * limit,
@@ -806,5 +1104,209 @@ export class TasksService {
     if (!timeLog) throw new NotFoundException('Time log not found');
 
     await this.timeLogRepo.delete({ id: timeLogId });
+  }
+
+  // ─── Attachments ───────────────────────────────────────────────────────
+
+  async uploadAttachments(
+    taskId: string,
+    userId: string,
+    files: Express.Multer.File[],
+  ) {
+    if (!files || files.length === 0) {
+      throw new BadRequestException('No files provided.');
+    }
+    if (files.length > 5) {
+      throw new BadRequestException(
+        'Maximum 5 files can be uploaded at a time.',
+      );
+    }
+
+    const [task, uploader] = await Promise.all([
+      this.taskRepo.findOne({
+        where: { id: taskId },
+        relations: {
+          project: true,
+          createdBy: true,
+          assignee: true,
+          dependencies: true,
+          subtasks: true,
+          boardColumn: true,
+        },
+        select: {
+          id: true,
+          title: true,
+          attachments: true,
+          columnOrder: true,
+          status: true,
+          priority: true,
+          source: true,
+          label: true,
+          description: true,
+          deadline: true,
+          type: true,
+          createdAt: true,
+          updatedAt: true,
+          project: { id: true },
+          createdBy: TasksService.USER_SUMMARY_SELECT,
+          assignee: TasksService.USER_SUMMARY_SELECT,
+          boardColumn: TasksService.BOARD_COLUMN_SELECT,
+          dependencies: { id: true, title: true },
+          subtasks: { id: true, isCompleted: true },
+        },
+      }),
+      this.userRepo.findOne({
+        where: { id: userId },
+        select: TasksService.USER_SUMMARY_SELECT,
+      }),
+    ]);
+    if (!task) throw new NotFoundException('Task not found');
+    if (!uploader) throw new NotFoundException('User not found');
+
+    const uploaderSummary: ApiUserSummary = {
+      id: uploader.id,
+      email: uploader.email,
+      firstName: uploader.firstName,
+      lastName: uploader.lastName,
+      avatarUrl: uploader.avatarUrl || null,
+    };
+
+    const nowIso = new Date().toISOString();
+
+    const uploadPromises = files.map(async (file) => {
+      const { publicUrl } = await this.storageService.uploadAttachment(
+        taskId,
+        file.buffer,
+        file.mimetype,
+        file.originalname,
+      );
+
+      const attachment: ApiAttachment = {
+        id: randomUUID(),
+        fileName: file.originalname,
+        fileUrl: publicUrl,
+        mimeType: file.mimetype,
+        size: file.size,
+        uploadedBy: uploaderSummary,
+        created_at: nowIso,
+      };
+
+      return attachment;
+    });
+
+    const newAttachments = await Promise.all(uploadPromises);
+
+    task.attachments = [...(task.attachments || []), ...newAttachments];
+
+    const updatedTask = await this.taskRepo.save(task);
+
+    // Fire-and-forget activity logging — non-critical side-effect
+    this.activitiesService.logActivity(
+      userId,
+      task.project.id,
+      `added ${newAttachments.length} attachment(s) to task: ${task.title}`,
+      'task',
+      task.id,
+    ).catch((err) =>
+      this.logger.error('Failed to log attachment upload activity', err),
+    );
+
+    // Realtime event
+    const payload: TaskUpdatedPayload = {
+      projectId: task.project.id,
+      task: mapTaskToApiTaskSummary(updatedTask),
+    };
+    this.eventEmitter.emit(
+      DOMAIN_EVENTS.TASK.UPDATED,
+      new TaskUpdatedEvent(payload),
+    );
+
+    return {
+      newAttachments,
+      allAttachments: updatedTask.attachments,
+      taskId: updatedTask.id,
+      attachmentsCount: updatedTask.attachments.length,
+    };
+  }
+
+  async deleteAttachment(taskId: string, attachmentId: string, userId: string) {
+    const task = await this.taskRepo.findOne({
+      where: { id: taskId },
+      relations: {
+        project: true,
+        createdBy: true,
+        assignee: true,
+        dependencies: true,
+        subtasks: true,
+        boardColumn: true,
+      },
+      select: {
+        id: true,
+        title: true,
+        attachments: true,
+        columnOrder: true,
+        status: true,
+        priority: true,
+        source: true,
+        label: true,
+        description: true,
+        deadline: true,
+        type: true,
+        createdAt: true,
+        updatedAt: true,
+        project: { id: true },
+        createdBy: TasksService.USER_SUMMARY_SELECT,
+        assignee: TasksService.USER_SUMMARY_SELECT,
+        boardColumn: TasksService.BOARD_COLUMN_SELECT,
+        dependencies: { id: true, title: true },
+        subtasks: { id: true, isCompleted: true },
+      },
+    });
+    if (!task) throw new NotFoundException('Task not found');
+
+    const attachments = task.attachments || [];
+    const targetIndex = attachments.findIndex((a) => a.id === attachmentId);
+
+    if (targetIndex === -1) {
+      throw new NotFoundException('Attachment not found');
+    }
+
+    const [targetAttachment] = attachments.splice(targetIndex, 1);
+
+    // Delete file from Supabase storage
+    if (targetAttachment.fileUrl) {
+      await this.storageService.deleteAttachment(targetAttachment.fileUrl);
+    }
+
+    task.attachments = attachments;
+    const updatedTask = await this.taskRepo.save(task);
+
+    // Fire-and-forget activity logging — non-critical side-effect
+    this.activitiesService.logActivity(
+      userId,
+      task.project.id,
+      `deleted attachment "${targetAttachment.fileName}" from task: ${task.title}`,
+      'task',
+      task.id,
+    ).catch((err) =>
+      this.logger.error('Failed to log attachment delete activity', err),
+    );
+
+    // Realtime event
+    const payload: TaskUpdatedPayload = {
+      projectId: task.project.id,
+      task: mapTaskToApiTaskSummary(updatedTask),
+    };
+    this.eventEmitter.emit(
+      DOMAIN_EVENTS.TASK.UPDATED,
+      new TaskUpdatedEvent(payload),
+    );
+
+    return {
+      deletedAttachment: targetAttachment,
+      remainingAttachments: updatedTask.attachments,
+      taskId: updatedTask.id,
+      attachmentsCount: updatedTask.attachments.length,
+    };
   }
 }

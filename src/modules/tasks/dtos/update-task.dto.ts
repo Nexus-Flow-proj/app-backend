@@ -69,4 +69,9 @@ export class UpdateTaskDto {
   @ValidateNested({ each: true })
   @Type(() => ApiAttachmentInputDto)
   attachments?: ApiAttachmentInputDto[];
+
+  @IsOptional()
+  @IsArray()
+  @IsUUID('all', { each: true })
+  dependencyIds?: string[];
 }

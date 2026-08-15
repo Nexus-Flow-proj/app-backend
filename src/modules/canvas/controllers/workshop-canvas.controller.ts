@@ -1,30 +1,50 @@
-import { Body, Controller, Get, Param, Patch, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '@shared/guards/jwt-auth.guard';
-import { ProjectAuthGuard } from '@shared/guards/project-auth.guard';
-import { RequirePermission } from '@shared/decorators/require-permission.decorator';
-import { WorkshopCanvasService } from '../services/workshop-canvas.service';
 import { CsrfGuard } from '@shared/guards/csrf.guard';
+import { CurrentUser } from '@shared/decorators/current-user.decorator';
+import { User } from '@modules/users/entities/user.entity';
+import { WorkshopCanvasService } from '../services/workshop-canvas.service';
 import { SaveWorkshopCanvasDto } from '../dtos/workshop/save-workshop-canvas.dto';
 
-@Controller('projects/:projectId/canvas')
-@UseGuards(JwtAuthGuard, ProjectAuthGuard)
+@Controller('projects/onboarding/draft/:draftId/workshop')
+@UseGuards(JwtAuthGuard)
 export class WorkshopCanvasController {
-  constructor(private readonly workshopCanvasService: WorkshopCanvasService) {}
+  constructor(
+    private readonly workshopCanvasService: WorkshopCanvasService,
+  ) {}
 
   @Get()
-  @RequirePermission('workshop', 'read')
-  async getWorkshopCanvas(@Param('projectId') projectId: string) {
-    const data = await this.workshopCanvasService.getWorkshopCanvas(projectId);
-    return { message: 'Canvas loaded', data };
+  async getDraftWorkshop(
+    @Param('draftId', ParseUUIDPipe) draftId: string,
+    @CurrentUser() user: User,
+  ) {
+    const data = await this.workshopCanvasService.getDraftWorkshop(
+      draftId,
+      user.id,
+    );
+    return { message: 'Workshop loaded successfully.', data };
   }
 
   @Patch()
   @UseGuards(CsrfGuard)
-  @RequirePermission('workshop', 'updateNodes')
-  async saveWorkshopCanvas(
-    @Param('projectId') projectId: string,
+  async saveDraftWorkshop(
+    @Param('draftId', ParseUUIDPipe) draftId: string,
+    @CurrentUser() user: User,
     @Body() dto: SaveWorkshopCanvasDto,
   ) {
-    return this.workshopCanvasService.saveWorkshopCanvas(projectId, dto);
+    const data = await this.workshopCanvasService.saveDraftWorkshop(
+      draftId,
+      user.id,
+      dto,
+    );
+    return { message: 'Workshop saved successfully.', data };
   }
 }

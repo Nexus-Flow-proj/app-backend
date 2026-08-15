@@ -11,7 +11,7 @@ import {
 import { Task } from './task.entity';
 
 @Entity('subtasks')
-@Index(['task', 'id'])
+@Index(['task', 'sortOrder', 'createdAt'])
 export class SubTask {
   @PrimaryGeneratedColumn('uuid')
   id: string;

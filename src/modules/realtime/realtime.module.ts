@@ -27,5 +27,6 @@ import { NotificationRealtimeListener } from './listeners/notification-realtime.
     PresenceTrackerService,
     NotificationRealtimeListener,
   ],
+  exports: [RealtimeService],
 })
 export class RealtimeModule {}

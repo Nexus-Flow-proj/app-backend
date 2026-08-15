@@ -29,7 +29,6 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
       callbackURL: process.env.GOOGLE_CALLBACK_URL!,
       scope: ['email', 'profile'],
       passReqToCallback: true,
-      state: true,
     });
   }
 

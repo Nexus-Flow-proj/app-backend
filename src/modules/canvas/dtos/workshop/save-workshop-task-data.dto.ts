@@ -9,12 +9,12 @@ import {
 export class SaveWorkshopTaskDataDto {
   @IsOptional()
   @IsString()
-  @MaxLength(36)
+  @MaxLength(255)
   taskId?: string;
 
   @IsString()
   @IsNotEmpty()
-  @MaxLength(36)
+  @MaxLength(255)
   featureId!: string;
 
   @IsString()
@@ -36,4 +36,9 @@ export class SaveWorkshopTaskDataDto {
   @IsString()
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   dueDate?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  priority?: string;
 }

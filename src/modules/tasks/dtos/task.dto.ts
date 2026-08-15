@@ -75,6 +75,14 @@ export class ApiAttachmentDto {
   created_at: string;
 }
 
+export class TaskDependencySummaryDto {
+  @Expose()
+  id: string;
+
+  @Expose()
+  title: string;
+}
+
 export class TaskDto {
   @Expose()
   id: string;
@@ -110,6 +118,10 @@ export class TaskDto {
   @Expose()
   @Transform(({ obj }) => obj.project?.id || null)
   projectId: string;
+
+  @Expose()
+  @Type(() => TaskDependencySummaryDto)
+  dependencies: TaskDependencySummaryDto[];
 
   @Expose()
   @Type(() => SubTaskResponseDto)
@@ -196,6 +208,10 @@ export class TaskListDto {
   @Expose()
   @Transform(({ obj }) => obj.project?.id || null)
   projectId: string;
+
+  @Expose()
+  @Type(() => TaskDependencySummaryDto)
+  dependencies: TaskDependencySummaryDto[];
 
   @Expose()
   @Type(() => BoardColumnInfoDto)
