@@ -8,11 +8,13 @@ import { User } from '@modules/users/entities/user.entity';
 import { DashboardController } from './dashboard.controller';
 import { DashboardService } from './dashboard.service';
 import { ActivitiesModule } from '@modules/activities/activities.module';
+import { TasksModule } from '@modules/tasks/tasks.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Task, Project, ProjectMember, ActivityLog, User]),
     ActivitiesModule,
+    TasksModule,
   ],
   controllers: [DashboardController],
   providers: [DashboardService],

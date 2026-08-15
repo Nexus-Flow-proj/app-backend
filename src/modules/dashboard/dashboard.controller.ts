@@ -63,7 +63,7 @@ export class DashboardController {
     @CurrentUser() user: User,
   ) {
     const data = await this.dashboardService.toggleFocusItem(
-      user.id,
+      user,
       taskId,
       body.completed,
     );

@@ -236,6 +236,36 @@ export class TasksService {
     }
   }
 
+  private async createTaskUpdatedNotification(
+    taskId: string,
+    taskTitle: string,
+    projectId: string,
+    recipientId: string,
+    actorId: string,
+  ): Promise<void> {
+    if (recipientId === actorId) {
+      return;
+    }
+
+    try {
+      await this.notificationsService.create({
+        recipientId,
+        actorId,
+        type: NotificationType.TASK_UPDATED,
+        title: 'Task updated',
+        message: `Task updated: ${taskTitle}`,
+        projectId,
+        resourceType: 'TASK',
+        resourceId: taskId,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to create TASK_UPDATED notification for taskId=${taskId}, recipientId=${recipientId}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+    }
+  }
+
   private async createCommentAddedNotification(
     taskId: string,
     taskTitle: string,
@@ -623,6 +653,16 @@ export class TasksService {
 
     if (!task) throw new NotFoundException('Task not found');
     const oldAssigneeId = task.assignee?.id ?? null;
+    const oldTitle = task.title;
+    const oldDescription = task.description;
+    const oldPriority = task.priority;
+    const oldDeadlineTime = task.deadline?.getTime() ?? null;
+    const oldLabel = task.label;
+    const oldType = task.type;
+    const oldBoardColumnId = task.boardColumn?.id ?? null;
+    const oldDependencyIds = new Set(
+      (task.dependencies ?? []).map((dependency) => dependency.id),
+    );
 
     const {
       assigneeId,
@@ -694,6 +734,24 @@ export class TasksService {
     const savedTask = await this.taskRepo.save(task);
     const newStatus = savedTask.status;
     const newAssigneeId = savedTask.assignee?.id ?? null;
+    const newDependencyIds = new Set(
+      (savedTask.dependencies ?? []).map((dependency) => dependency.id),
+    );
+    const dependenciesChanged =
+      oldDependencyIds.size !== newDependencyIds.size ||
+      Array.from(oldDependencyIds).some(
+        (dependencyId) => !newDependencyIds.has(dependencyId),
+      );
+    const meaningfulTaskChanged =
+      oldTitle !== savedTask.title ||
+      oldDescription !== savedTask.description ||
+      oldPriority !== savedTask.priority ||
+      oldDeadlineTime !== (savedTask.deadline?.getTime() ?? null) ||
+      oldLabel !== savedTask.label ||
+      oldType !== savedTask.type ||
+      oldBoardColumnId !== (savedTask.boardColumn?.id ?? null) ||
+      dependenciesChanged ||
+      (oldStatus !== newStatus && newStatus !== TaskStatus.DONE);
 
     // Fire all side-effects in parallel — they are independent
     const sideEffects: Promise<void>[] = [];
@@ -711,6 +769,18 @@ export class TasksService {
           ),
         );
       }
+    }
+
+    if (meaningfulTaskChanged && newAssigneeId) {
+      sideEffects.push(
+        this.createTaskUpdatedNotification(
+          savedTask.id,
+          savedTask.title,
+          savedTask.project.id,
+          newAssigneeId,
+          currentUser.id,
+        ),
+      );
     }
 
     if (oldAssigneeId !== newAssigneeId) {
