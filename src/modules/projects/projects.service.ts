@@ -254,6 +254,37 @@ export class ProjectsService {
     }
   }
 
+  private async createInviteRejectedNotification(
+    inviteId: string,
+    projectId: string,
+    projectName: string,
+    recipientId: string,
+    actorId: string,
+    inviteeName: string,
+  ): Promise<void> {
+    if (recipientId === actorId) {
+      return;
+    }
+
+    try {
+      await this.notificationsService.create({
+        recipientId,
+        actorId,
+        type: NotificationType.INVITATION_REJECTED,
+        title: `${inviteeName} declined your invite`,
+        message: `${inviteeName} declined the invitation to ${projectName}`,
+        projectId,
+        resourceType: 'INVITATION',
+        resourceId: inviteId,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to create INVITATION_REJECTED notification for inviteId=${inviteId}, recipientId=${recipientId}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+    }
+  }
+
   async create(body: CreateProjectDto, userId: string): Promise<ProjectDto> {
     const owner = await this.userRepo.findOne({ where: { id: userId } });
     if (!owner) {
@@ -685,13 +716,26 @@ export class ProjectsService {
     }
 
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-    const invite = await this.inviteRepo.findOne({ where: { tokenHash } });
+    const invite = await this.inviteRepo.findOne({
+      where: { tokenHash },
+      relations: { project: true, invitedBy: true },
+    });
     if (!invite || invite.email.toLowerCase() !== user.email.toLowerCase()) {
       throw new NotFoundException('Invite not found');
     }
 
     invite.status = InviteStatus.REJECTED;
     await this.inviteRepo.save(invite);
+
+    await this.createInviteRejectedNotification(
+      invite.id,
+      invite.project.id,
+      invite.project.name,
+      invite.invitedBy.id,
+      user.id,
+      [user.firstName, user.lastName].filter(Boolean).join(' ').trim() ||
+        user.email,
+    );
   }
 
   async cancelInvite(projectId: string, inviteId: string): Promise<void> {
