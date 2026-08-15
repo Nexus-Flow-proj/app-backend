@@ -239,7 +239,7 @@ export class ProjectsService {
       await this.notificationsService.create({
         recipientId,
         actorId,
-        type: NotificationType.INVITE_ACCEPTED,
+        type: NotificationType.INVITATION_ACCEPTED,
         title: `${inviteeName} accepted your invite`,
         message: `${inviteeName} accepted the invitation to ${projectName}`,
         projectId,
@@ -248,7 +248,7 @@ export class ProjectsService {
       });
     } catch (error) {
       this.logger.error(
-        `Failed to create INVITE_ACCEPTED notification for inviteId=${inviteId}, recipientId=${recipientId}`,
+        `Failed to create INVITATION_ACCEPTED notification for inviteId=${inviteId}, recipientId=${recipientId}`,
         error instanceof Error ? error.stack : undefined,
       );
     }
