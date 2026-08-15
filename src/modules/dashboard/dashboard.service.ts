@@ -20,6 +20,7 @@ import { User } from '@modules/users/entities/user.entity';
 import { TaskStatus } from '@modules/tasks/enums/task-status.enum';
 import { ActivitiesService } from '@modules/activities/activities.service';
 import { ProjectAuthEvaluator } from '@modules/projects/utils/project-auth.evaluator';
+import { TasksService } from '@modules/tasks/tasks.service';
 
 @Injectable()
 export class DashboardService {
@@ -35,6 +36,7 @@ export class DashboardService {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly activitiesService: ActivitiesService,
+    private readonly tasksService: TasksService,
   ) {}
 
   async getDashboardSummary(userId: string) {
@@ -479,7 +481,8 @@ export class DashboardService {
     });
   }
 
-  async toggleFocusItem(userId: string, taskId: string, completed: boolean) {
+  async toggleFocusItem(user: User, taskId: string, completed: boolean) {
+    const userId = user.id;
     const task = await this.taskRepo.findOne({
       where: { id: taskId },
       relations: { project: true, assignee: true },
@@ -511,16 +514,12 @@ export class DashboardService {
       );
     }
 
-    task.status = completed ? TaskStatus.DONE : TaskStatus.IN_PROGRESS;
-    await this.taskRepo.save(task);
-
-    const action = completed ? 'completed' : 'reopened';
-    await this.activitiesService.logActivity(
-      userId,
-      task.project.id,
-      `${action} task: ${task.title}`,
-      'task',
-      task.id,
+    await this.tasksService.updateTask(
+      taskId,
+      {
+        status: completed ? TaskStatus.DONE : TaskStatus.IN_PROGRESS,
+      },
+      user,
     );
 
     let timeStr = 'Anytime';

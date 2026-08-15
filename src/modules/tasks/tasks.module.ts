@@ -32,6 +32,6 @@ import { NotificationsModule } from '@modules/notifications/notifications.module
   ],
   controllers: [TasksController],
   providers: [TasksService],
-  exports: [TypeOrmModule],
+  exports: [TypeOrmModule, TasksService],
 })
 export class TasksModule {}
