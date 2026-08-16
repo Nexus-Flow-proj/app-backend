@@ -809,7 +809,10 @@ export class ProjectsService {
     body: BulkUpdateMemberRolesDto,
     actor: ProjectMember,
   ): Promise<ProjectMemberDto[]> {
-    return this.projectRepo.manager.transaction(async (manager) => {
+    const changedMemberUserIds: string[] = [];
+
+    const savedMemberViews = await this.projectRepo.manager.transaction(
+      async (manager) => {
       const assignmentMap = new Map<string, string>();
       for (const assignment of body.assignments) {
         assignmentMap.set(assignment.memberId, assignment.roleId);
@@ -900,6 +903,10 @@ export class ProjectsService {
         const currentlyIsAdmin = currentAdminIds.has(member.id);
         const willBeAdmin = targetRole.level === 100;
 
+        if (member.role.id !== targetRoleId) {
+          changedMemberUserIds.push(member.user.id);
+        }
+
         if (currentlyIsAdmin && !willBeAdmin) {
           demotions++;
         } else if (!currentlyIsAdmin && willBeAdmin) {
@@ -930,8 +937,24 @@ export class ProjectsService {
 
       const savedMembers = await manager.save(ProjectMember, updatedMembers);
 
-      return savedMembers.map((m) => this.toMemberView(m));
-    });
+        return savedMembers.map((m) => this.toMemberView(m));
+      },
+    );
+
+    for (const recipientId of changedMemberUserIds) {
+      await this.createProjectNotification({
+        recipientId,
+        actorId: actor.user.id,
+        type: NotificationType.PERMISSIONS_UPDATED,
+        title: 'Permissions updated',
+        message: 'Your project role and permissions were updated',
+        projectId,
+        resourceType: 'PROJECT',
+        resourceId: projectId,
+        logMessage: `Failed to create PERMISSIONS_UPDATED notification for projectId=${projectId}, recipientId=${recipientId}`,
+      });
+    }
+    return savedMemberViews;
   }
 
   async updateMemberRole(
