@@ -10,6 +10,7 @@ export interface EnvConfig {
   csrfTokenCookieMaxAge: number;
   geminiApiKey: string;
   openrouterApiKey: string;
+  embeddingModel: string;
   supabaseUrl: string;
   supabaseServiceRoleKey: string;
 }
@@ -34,6 +35,8 @@ export default registerAs('env', () => ({
   ),
   geminiApiKey: process.env.GEMINI_API_KEY || '',
   openrouterApiKey: process.env.OPENROUTER_API_KEY || '',
+  embeddingModel:
+    process.env.EMBEDDING_MODEL || 'nvidia/nemotron-3-embed-1b:free',
   supabaseUrl: process.env.SUPABASE_URL || '',
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
 }));

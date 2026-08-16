@@ -28,6 +28,7 @@ import { Task } from '@modules/tasks/entities/task.entity';
 import { Project } from '@modules/projects/entities/project.entity';
 import { ProjectMember } from '@modules/projects/entities/project-member.entity';
 import { TaskStatus } from '@modules/tasks/enums/task-status.enum';
+import { KnowledgeService } from './knowledge.service';
 
 @Injectable()
 export class AIService {
@@ -56,7 +57,20 @@ export class AIService {
     private readonly geminiService: GeminiService,
     private readonly realtimeService: RealtimeService,
     private readonly workshopCanvasService: WorkshopCanvasService,
+    private readonly knowledgeService: KnowledgeService,
   ) {}
+
+  private formatKnowledgeContext(
+    knowledgeList: Array<{ title: string; content: string; sourceType: string }>,
+  ): string {
+    if (!knowledgeList || knowledgeList.length === 0) {
+      return '';
+    }
+    const lines = knowledgeList.map(
+      (k) => `- [${k.title}] (${k.sourceType.toUpperCase()}): ${k.content}`,
+    );
+    return `RELEVANT PROJECT POLICIES & GUIDELINES (RAG Context):\n${lines.join('\n')}\n\n`;
+  }
 
   async generateOnboardingPlan(
     userId: string,
@@ -158,10 +172,18 @@ export class AIService {
       activeTasks: workloadMap.get(m.user.id) || 0,
     }));
 
-    const systemInstruction =
-      'You are an expert Agile Workload and Assignment Planner. Analyze team members and select the best assignee for the given task based on role fit and current workload. Return JSON only matching the schema.';
+    const relevantKnowledge =
+      await this.knowledgeService.searchRelevantKnowledge(
+        projectId,
+        `Assignee policy: ${task.title} ${task.description || ''} ${task.type} ${task.priority}`,
+        5,
+      );
+    const knowledgeContext = this.formatKnowledgeContext(relevantKnowledge);
 
-    const prompt = `Task Title: "${task.title}"
+    const systemInstruction =
+      'You are an expert Agile Workload and Assignment Planner. Analyze team members and select the best assignee for the given task based on role fit, current workload, and any provided project policies or guidelines. Return JSON only matching the schema.';
+
+    const prompt = `${knowledgeContext}Task Title: "${task.title}"
 Description: "${task.description || 'N/A'}"
 Priority: ${task.priority}
 Type: ${task.type}
@@ -197,10 +219,18 @@ ${JSON.stringify(memberContext, null, 2)}`;
 
     const existingSubtaskTitles = task.subtasks?.map((st) => st.title) || [];
 
-    const systemInstruction =
-      'You are a Technical Project Lead. Decompose the task into 3 to 6 actionable subtasks. Ensure subtasks are logically ordered using sortOrder (1, 2, 3...). Return JSON matching the schema.';
+    const relevantKnowledge =
+      await this.knowledgeService.searchRelevantKnowledge(
+        projectId,
+        `Task Decomposition Guidelines: ${task.title} ${task.description || ''} ${task.type}`,
+        4,
+      );
+    const knowledgeContext = this.formatKnowledgeContext(relevantKnowledge);
 
-    const prompt = `Task Title: "${task.title}"
+    const systemInstruction =
+      'You are a Technical Project Lead. Decompose the task into 3 to 6 actionable subtasks aligning with project standards and guidelines. Ensure subtasks are logically ordered using sortOrder (1, 2, 3...). Return JSON matching the schema.';
+
+    const prompt = `${knowledgeContext}Task Title: "${task.title}"
 Description: "${task.description || 'N/A'}"
 Type: ${task.type}
 Existing Subtasks: ${JSON.stringify(existingSubtaskTitles)}`;
@@ -231,10 +261,18 @@ Existing Subtasks: ${JSON.stringify(existingSubtaskTitles)}`;
       throw new NotFoundException('Task not found in specified project');
     }
 
-    const systemInstruction =
-      'You are a Senior Technical Writer and Product Owner. Draft a comprehensive, well-structured task description in markdown .md format along with brief acceptance criteria for developers. Return valid JSON matching the schema.';
+    const relevantKnowledge =
+      await this.knowledgeService.searchRelevantKnowledge(
+        projectId,
+        `Requirements & Definition of Done: ${task.title} ${task.description || ''} ${task.type}`,
+        4,
+      );
+    const knowledgeContext = this.formatKnowledgeContext(relevantKnowledge);
 
-    const prompt = `Project Name: "${task.project?.name || 'General Workspace'}"
+    const systemInstruction =
+      'You are a Senior Technical Writer and Product Owner. Draft a comprehensive, well-structured task description in markdown .md format along with brief acceptance criteria for developers, following any project policies and guidelines. Return valid JSON matching the schema.';
+
+    const prompt = `${knowledgeContext}Project Name: "${task.project?.name || 'General Workspace'}"
 Project Description: "${task.project?.description || 'N/A'}"
 
 Task Context:
@@ -355,10 +393,18 @@ Task Context:
       overdueTasks,
     };
 
-    const systemInstruction =
-      'You are an Executive Agile Project Manager. Review the project breakdown and synthesize a brief executive report covering: current project state, who is working on what, progress on active stages, tasks left to complete, and potential workload bottlenecks or risks. Output valid JSON matching the schema.';
+    const relevantKnowledge =
+      await this.knowledgeService.searchRelevantKnowledge(
+        projectId,
+        `Project Goals, Milestones & Objectives: ${project.name} ${project.description || ''}`,
+        5,
+      );
+    const knowledgeContext = this.formatKnowledgeContext(relevantKnowledge);
 
-    const prompt = `Project Live Snapshot:
+    const systemInstruction =
+      'You are an Executive Agile Project Manager. Review the project breakdown and synthesize a brief executive report covering: current project state, who is working on what, progress on active stages, tasks left to complete, and potential workload bottlenecks or risks, guided by project objectives and policies. Output valid JSON matching the schema.';
+
+    const prompt = `${knowledgeContext}Project Live Snapshot:
 ${JSON.stringify(context, null, 2)}`;
 
     const responseSchema = this.geminiService.getProjectOverviewSchema();
@@ -619,10 +665,18 @@ Conversation History: ${JSON.stringify(formattedHistory)}.`;
         .reverse()
         .map((m) => ({ role: m.role, content: m.content }));
 
-      const systemInstruction =
-        'You are an AI assistant living on a Kanban project board. Your role is to suggest board additions or task mutations. Output only valid JSON suggestions mapping to CREATE_COLUMN, CREATE_TASK, UPDATE_TASK, or DELETE_TASK. No prose.';
+      const relevantKnowledge =
+        await this.knowledgeService.searchRelevantKnowledge(
+          projectId,
+          dto.message,
+          4,
+        );
+      const knowledgeContext = this.formatKnowledgeContext(relevantKnowledge);
 
-      const prompt = `User request message: "${dto.message}".
+      const systemInstruction =
+        'You are an AI assistant living on a Kanban project board. Your role is to suggest board additions or task mutations aligned with project rules and guidelines. Output only valid JSON suggestions mapping to CREATE_COLUMN, CREATE_TASK, UPDATE_TASK, or DELETE_TASK. No prose.';
+
+      const prompt = `${knowledgeContext}User request message: "${dto.message}".
 Conversation History: ${JSON.stringify(formattedHistory)}.
 Current board context snapshot: ${JSON.stringify(dto.boardContext || {})}.
 Provide suggestions matching the JSON schema.`;

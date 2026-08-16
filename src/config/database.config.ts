@@ -21,7 +21,9 @@ export default registerAs(
     password: process.env.DB_PASSWORD || 'password',
     database: process.env.DB_NAME || 'nexus_flow',
     ssl:
-      process.env.NODE_ENV === 'production'
+      process.env.DB_SSL === 'true' ||
+      process.env.NODE_ENV === 'production' ||
+      Boolean(process.env.DATABASE_URL)
         ? { rejectUnauthorized: false }
         : undefined,
   }),

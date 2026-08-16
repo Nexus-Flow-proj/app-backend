@@ -11,12 +11,15 @@ import { isProduction } from './data-source';
       inject: [databaseConfig.KEY],
       useFactory: (dbConfig: ConfigType<typeof databaseConfig>) => ({
         type: dbConfig.type,
-        host: dbConfig.host,
-        port: dbConfig.port,
-        username: dbConfig.username,
-        password: dbConfig.password,
-        database: dbConfig.database,
-        url: isProduction ? dbConfig.url : '',
+        ...(dbConfig.url
+          ? { url: dbConfig.url }
+          : {
+              host: dbConfig.host,
+              port: dbConfig.port,
+              username: dbConfig.username,
+              password: dbConfig.password,
+              database: dbConfig.database,
+            }),
         entities: [__dirname + '/../../modules/**/*.entity.{js,ts}'],
         ssl: dbConfig.ssl,
         synchronize: false,
