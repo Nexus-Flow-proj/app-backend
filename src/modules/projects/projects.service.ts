@@ -191,15 +191,29 @@ export class ProjectsService {
     private readonly notificationsService: NotificationsService,
   ) {}
 
-  private async createInviteReceivedNotification(
-    inviteId: string,
-    projectId: string,
-    projectName: string,
-    recipientId: string,
-    actorId: string,
-    inviterName: string,
-    inviteeName: string,
-  ): Promise<void> {
+  private async createProjectNotification(notification: {
+    recipientId: string;
+    actorId: string;
+    type: NotificationType;
+    title: string;
+    message: string;
+    projectId: string;
+    resourceType: string;
+    resourceId: string;
+    logMessage: string;
+  }): Promise<void> {
+    const {
+      recipientId,
+      actorId,
+      type,
+      title,
+      message,
+      projectId,
+      resourceType,
+      resourceId,
+      logMessage,
+    } = notification;
+
     if (recipientId === actorId) {
       return;
     }
@@ -208,108 +222,16 @@ export class ProjectsService {
       await this.notificationsService.create({
         recipientId,
         actorId,
-        type: NotificationType.INVITE_RECEIVED,
-        title: `You're invited to ${projectName}`,
-        message: `${inviterName} invited ${inviteeName} to ${projectName}`,
+        type,
+        title,
+        message,
         projectId,
-        resourceType: 'INVITATION',
-        resourceId: inviteId,
+        resourceType,
+        resourceId,
       });
     } catch (error) {
       this.logger.error(
-        `Failed to create INVITE_RECEIVED notification for inviteId=${inviteId}, recipientId=${recipientId}`,
-        error instanceof Error ? error.stack : undefined,
-      );
-    }
-  }
-
-  private async createInviteAcceptedNotification(
-    inviteId: string,
-    projectId: string,
-    projectName: string,
-    recipientId: string,
-    actorId: string,
-    inviteeName: string,
-  ): Promise<void> {
-    if (recipientId === actorId) {
-      return;
-    }
-
-    try {
-      await this.notificationsService.create({
-        recipientId,
-        actorId,
-        type: NotificationType.INVITATION_ACCEPTED,
-        title: `${inviteeName} accepted your invite`,
-        message: `${inviteeName} accepted the invitation to ${projectName}`,
-        projectId,
-        resourceType: 'INVITATION',
-        resourceId: inviteId,
-      });
-    } catch (error) {
-      this.logger.error(
-        `Failed to create INVITATION_ACCEPTED notification for inviteId=${inviteId}, recipientId=${recipientId}`,
-        error instanceof Error ? error.stack : undefined,
-      );
-    }
-  }
-
-  private async createInviteRejectedNotification(
-    inviteId: string,
-    projectId: string,
-    projectName: string,
-    recipientId: string,
-    actorId: string,
-    inviteeName: string,
-  ): Promise<void> {
-    if (recipientId === actorId) {
-      return;
-    }
-
-    try {
-      await this.notificationsService.create({
-        recipientId,
-        actorId,
-        type: NotificationType.INVITATION_REJECTED,
-        title: `${inviteeName} declined your invite`,
-        message: `${inviteeName} declined the invitation to ${projectName}`,
-        projectId,
-        resourceType: 'INVITATION',
-        resourceId: inviteId,
-      });
-    } catch (error) {
-      this.logger.error(
-        `Failed to create INVITATION_REJECTED notification for inviteId=${inviteId}, recipientId=${recipientId}`,
-        error instanceof Error ? error.stack : undefined,
-      );
-    }
-  }
-
-  private async createInviteCancelledNotification(
-    inviteId: string,
-    projectId: string,
-    projectName: string,
-    recipientId: string,
-    actorId: string,
-  ): Promise<void> {
-    if (recipientId === actorId) {
-      return;
-    }
-
-    try {
-      await this.notificationsService.create({
-        recipientId,
-        actorId,
-        type: NotificationType.INVITATION_CANCELLED,
-        title: 'Invitation cancelled',
-        message: `Your invitation to ${projectName} was cancelled`,
-        projectId,
-        resourceType: 'INVITATION',
-        resourceId: inviteId,
-      });
-    } catch (error) {
-      this.logger.error(
-        `Failed to create INVITATION_CANCELLED notification for inviteId=${inviteId}, recipientId=${recipientId}`,
+        logMessage,
         error instanceof Error ? error.stack : undefined,
       );
     }
@@ -569,15 +491,17 @@ export class ProjectsService {
       : normalizedEmail;
 
     if (invitedUser) {
-      await this.createInviteReceivedNotification(
-        savedInvite.id,
-        savedInvite.project.id,
-        savedInvite.project.name,
-        invitedUser.id,
-        actor.user.id,
-        inviterName || 'A project member',
-        inviteeName || normalizedEmail,
-      );
+      await this.createProjectNotification({
+        recipientId: invitedUser.id,
+        actorId: actor.user.id,
+        type: NotificationType.INVITE_RECEIVED,
+        title: `You're invited to ${savedInvite.project.name}`,
+        message: `${inviterName || 'A project member'} invited ${inviteeName || normalizedEmail} to ${savedInvite.project.name}`,
+        projectId: savedInvite.project.id,
+        resourceType: 'INVITATION',
+        resourceId: savedInvite.id,
+        logMessage: `Failed to create INVITE_RECEIVED notification for inviteId=${savedInvite.id}, recipientId=${invitedUser.id}`,
+      });
     }
 
     const frontendUrl = this.configService.get<string>('env.frontendUrl');
@@ -686,15 +610,20 @@ export class ProjectsService {
     if (existingMember) {
       invite.status = InviteStatus.ACCEPTED;
       await this.inviteRepo.save(invite);
-      await this.createInviteAcceptedNotification(
-        invite.id,
-        invite.project.id,
-        invite.project.name,
-        invite.invitedBy.id,
-        user.id,
+      const inviteeName =
         [user.firstName, user.lastName].filter(Boolean).join(' ').trim() ||
-          user.email,
-      );
+        user.email;
+      await this.createProjectNotification({
+        recipientId: invite.invitedBy.id,
+        actorId: user.id,
+        type: NotificationType.INVITATION_ACCEPTED,
+        title: `${inviteeName} accepted your invite`,
+        message: `${inviteeName} accepted the invitation to ${invite.project.name}`,
+        projectId: invite.project.id,
+        resourceType: 'INVITATION',
+        resourceId: invite.id,
+        logMessage: `Failed to create INVITATION_ACCEPTED notification for inviteId=${invite.id}, recipientId=${invite.invitedBy.id}`,
+      });
       return this.toMemberView(existingMember);
     }
 
@@ -707,15 +636,20 @@ export class ProjectsService {
 
     invite.status = InviteStatus.ACCEPTED;
     await this.inviteRepo.save(invite);
-    await this.createInviteAcceptedNotification(
-      invite.id,
-      invite.project.id,
-      invite.project.name,
-      invite.invitedBy.id,
-      user.id,
+    const inviteeName =
       [user.firstName, user.lastName].filter(Boolean).join(' ').trim() ||
-        user.email,
-    );
+      user.email;
+    await this.createProjectNotification({
+      recipientId: invite.invitedBy.id,
+      actorId: user.id,
+      type: NotificationType.INVITATION_ACCEPTED,
+      title: `${inviteeName} accepted your invite`,
+      message: `${inviteeName} accepted the invitation to ${invite.project.name}`,
+      projectId: invite.project.id,
+      resourceType: 'INVITATION',
+      resourceId: invite.id,
+      logMessage: `Failed to create INVITATION_ACCEPTED notification for inviteId=${invite.id}, recipientId=${invite.invitedBy.id}`,
+    });
 
     const hydratedMember = await this.projectMemberRepo.findOne({
       where: { id: savedMember.id },
@@ -757,15 +691,20 @@ export class ProjectsService {
     invite.status = InviteStatus.REJECTED;
     await this.inviteRepo.save(invite);
 
-    await this.createInviteRejectedNotification(
-      invite.id,
-      invite.project.id,
-      invite.project.name,
-      invite.invitedBy.id,
-      user.id,
+    const inviteeName =
       [user.firstName, user.lastName].filter(Boolean).join(' ').trim() ||
-        user.email,
-    );
+      user.email;
+    await this.createProjectNotification({
+      recipientId: invite.invitedBy.id,
+      actorId: user.id,
+      type: NotificationType.INVITATION_REJECTED,
+      title: `${inviteeName} declined your invite`,
+      message: `${inviteeName} declined the invitation to ${invite.project.name}`,
+      projectId: invite.project.id,
+      resourceType: 'INVITATION',
+      resourceId: invite.id,
+      logMessage: `Failed to create INVITATION_REJECTED notification for inviteId=${invite.id}, recipientId=${invite.invitedBy.id}`,
+    });
   }
 
   async cancelInvite(
@@ -799,13 +738,17 @@ export class ProjectsService {
       .getOne();
 
     if (invitedUser) {
-      await this.createInviteCancelledNotification(
-        invite.id,
-        invite.project.id,
-        invite.project.name,
-        invitedUser.id,
+      await this.createProjectNotification({
+        recipientId: invitedUser.id,
         actorId,
-      );
+        type: NotificationType.INVITATION_CANCELLED,
+        title: 'Invitation cancelled',
+        message: `Your invitation to ${invite.project.name} was cancelled`,
+        projectId: invite.project.id,
+        resourceType: 'INVITATION',
+        resourceId: invite.id,
+        logMessage: `Failed to create INVITATION_CANCELLED notification for inviteId=${invite.id}, recipientId=${invitedUser.id}`,
+      });
     }
   }
 
@@ -1050,23 +993,17 @@ export class ProjectsService {
 
     await this.projectMemberRepo.delete(member.id);
 
-    try {
-      await this.notificationsService.create({
-        recipientId,
-        actorId,
-        type: NotificationType.REMOVED_FROM_PROJECT,
-        title: 'Removed from project',
-        message: `You were removed from project: ${projectName}`,
-        projectId,
-        resourceType: 'PROJECT',
-        resourceId: projectId,
-      });
-    } catch (error) {
-      this.logger.error(
-        `Failed to create REMOVED_FROM_PROJECT notification for projectId=${projectId}, memberId=${memberId}, recipientId=${recipientId}`,
-        error instanceof Error ? error.stack : undefined,
-      );
-    }
+    await this.createProjectNotification({
+      recipientId,
+      actorId,
+      type: NotificationType.REMOVED_FROM_PROJECT,
+      title: 'Removed from project',
+      message: `You were removed from project: ${projectName}`,
+      projectId,
+      resourceType: 'PROJECT',
+      resourceId: projectId,
+      logMessage: `Failed to create REMOVED_FROM_PROJECT notification for projectId=${projectId}, memberId=${memberId}, recipientId=${recipientId}`,
+    });
   }
 
   private async loadProjectOrFail(projectId: string): Promise<Project> {
