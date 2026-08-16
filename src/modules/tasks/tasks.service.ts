@@ -597,183 +597,257 @@ export class TasksService {
   }
 
   async updateTask(taskId: string, dto: UpdateTaskDto, currentUser: User) {
-    const task = await this.taskRepo.findOne({
-      where: { id: taskId },
-      relations: {
-        project: true,
-        createdBy: true,
-        assignee: true,
-        dependencies: true,
-        subtasks: true,
-        boardColumn: true,
-        comments: { user: true },
-      },
-      select: {
+  const task = await this.taskRepo.findOne({
+    where: { id: taskId },
+    relations: {
+      project: true,
+      createdBy: true,
+      assignee: true,
+      dependencies: true,
+      subtasks: true,
+      boardColumn: true,
+      comments: { user: true },
+    },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      label: true,
+      deadline: true,
+      type: true,
+      status: true,
+      priority: true,
+      columnOrder: true,
+      source: true,
+      attachments: true,
+      metadata: true,
+      generationJobId: true,
+      createdAt: true,
+      updatedAt: true,
+      project: { id: true },
+      createdBy: TasksService.USER_SUMMARY_SELECT,
+      assignee: TasksService.USER_SUMMARY_SELECT,
+      boardColumn: TasksService.BOARD_COLUMN_SELECT,
+      dependencies: { id: true, title: true },
+      subtasks: {
         id: true,
         title: true,
-        description: true,
-        label: true,
-        deadline: true,
-        type: true,
-        status: true,
-        priority: true,
-        columnOrder: true,
-        source: true,
-        attachments: true,
-        metadata: true,
-        generationJobId: true,
+        isCompleted: true,
+        sortOrder: true,
         createdAt: true,
         updatedAt: true,
-        project: { id: true },
-        createdBy: TasksService.USER_SUMMARY_SELECT,
-        assignee: TasksService.USER_SUMMARY_SELECT,
-        boardColumn: TasksService.BOARD_COLUMN_SELECT,
-        dependencies: { id: true, title: true },
-        subtasks: {
-          id: true,
-          title: true,
-          isCompleted: true,
-          sortOrder: true,
-          createdAt: true,
-          updatedAt: true,
-        },
-        comments: {
-          id: true,
-          body: true,
-          createdAt: true,
-          updatedAt: true,
-          user: TasksService.USER_SUMMARY_SELECT,
-        },
       },
-      order: {
-        subtasks: { sortOrder: 'ASC', createdAt: 'ASC' },
-        comments: { createdAt: 'ASC' },
+      comments: {
+        id: true,
+        body: true,
+        createdAt: true,
+        updatedAt: true,
+        user: TasksService.USER_SUMMARY_SELECT,
       },
-    });
+    },
+    order: {
+      subtasks: { sortOrder: 'ASC', createdAt: 'ASC' },
+      comments: { createdAt: 'ASC' },
+    },
+  });
 
-    if (!task) throw new NotFoundException('Task not found');
-    const oldAssigneeId = task.assignee?.id ?? null;
-    const oldTitle = task.title;
-    const oldDescription = task.description;
-    const oldPriority = task.priority;
-    const oldDeadlineTime = task.deadline?.getTime() ?? null;
-    const oldLabel = task.label;
-    const oldType = task.type;
-    const oldBoardColumnId = task.boardColumn?.id ?? null;
-    const oldDependencyIds = new Set(
-      (task.dependencies ?? []).map((dependency) => dependency.id),
-    );
+  if (!task) throw new NotFoundException('Task not found');
 
-    const {
-      assigneeId,
-      assignee: assigneeInput,
-      boardColumnId,
-      dependencyIds,
-      ...scalarFields
-    } = dto;
-    const resolvedAssigneeId =
-      assigneeInput !== undefined ? assigneeInput : assigneeId;
+  const oldAssigneeId = task.assignee?.id ?? null;
+  const oldTitle = task.title;
+  const oldDescription = task.description;
+  const oldPriority = task.priority;
 
-    if (resolvedAssigneeId !== undefined) {
-      if (resolvedAssigneeId === null) {
-        task.assignee = null;
-      } else {
-        const assignee = await this.userRepo.findOne({
-          where: { id: resolvedAssigneeId },
-        });
-        if (!assignee) throw new NotFoundException('Assignee not found');
-        await this.assertAssigneeMembership(
-          task.project.id,
-          resolvedAssigneeId,
-        );
-        task.assignee = assignee;
-        task.assignedBy = currentUser;
+  const oldDeadlineTime = task.deadline
+    ? new Date(task.deadline).getTime()
+    : null;
+
+  const oldLabel = task.label;
+  const oldType = task.type;
+  const oldBoardColumnId = task.boardColumn?.id ?? null;
+
+  const oldDependencyIds = new Set(
+    (task.dependencies ?? []).map((dependency) => dependency.id),
+  );
+
+  const {
+    assigneeId,
+    assignee: assigneeInput,
+    boardColumnId,
+    dependencyIds,
+    ...scalarFields
+  } = dto;
+
+  const resolvedAssigneeId =
+    assigneeInput !== undefined ? assigneeInput : assigneeId;
+
+  if (resolvedAssigneeId !== undefined) {
+    if (resolvedAssigneeId === null) {
+      task.assignee = null;
+    } else {
+      const assignee = await this.userRepo.findOne({
+        where: { id: resolvedAssigneeId },
+      });
+
+      if (!assignee) {
+        throw new NotFoundException('Assignee not found');
       }
-    }
 
-    if (boardColumnId !== undefined) {
-      task.boardColumn = await this.resolveBoardColumn(
-        boardColumnId,
+      await this.assertAssigneeMembership(
         task.project.id,
+        resolvedAssigneeId,
       );
+
+      task.assignee = assignee;
+      task.assignedBy = currentUser;
     }
+  }
 
-    if (dependencyIds !== undefined) {
-      if (dependencyIds.includes(taskId)) {
-        throw new BadRequestException('A task cannot depend on itself');
-      }
-      if (dependencyIds.length === 0) {
-        task.dependencies = [];
-      } else {
-        const uniqueDepIds = Array.from(new Set(dependencyIds));
-        const foundDeps = await this.taskRepo.find({
-          where: uniqueDepIds.map((id) => ({
-            id,
-            project: { id: task.project.id },
-          })),
-        });
-        if (foundDeps.length !== uniqueDepIds.length) {
-          throw new BadRequestException(
-            'One or more dependency tasks were not found in this project',
-          );
-        }
-        task.dependencies = foundDeps;
-      }
-    }
-
-    if (scalarFields.deadline !== undefined) {
-      task.deadline = scalarFields.deadline
-        ? new Date(scalarFields.deadline)
-        : null;
-      delete scalarFields.deadline;
-    }
-
-    const oldStatus = task.status;
-    Object.assign(task, scalarFields);
-
-    const savedTask = await this.taskRepo.save(task);
-    const newStatus = savedTask.status;
-    const newAssigneeId = savedTask.assignee?.id ?? null;
-    const newDependencyIds = new Set(
-      (savedTask.dependencies ?? []).map((dependency) => dependency.id),
+  if (boardColumnId !== undefined) {
+    task.boardColumn = await this.resolveBoardColumn(
+      boardColumnId,
+      task.project.id,
     );
-    const dependenciesChanged =
-      oldDependencyIds.size !== newDependencyIds.size ||
-      Array.from(oldDependencyIds).some(
-        (dependencyId) => !newDependencyIds.has(dependencyId),
-      );
-    const meaningfulTaskChanged =
-      oldTitle !== savedTask.title ||
-      oldDescription !== savedTask.description ||
-      oldPriority !== savedTask.priority ||
-      oldDeadlineTime !== (savedTask.deadline?.getTime() ?? null) ||
-      oldLabel !== savedTask.label ||
-      oldType !== savedTask.type ||
-      oldBoardColumnId !== (savedTask.boardColumn?.id ?? null) ||
-      dependenciesChanged ||
-      (oldStatus !== newStatus && newStatus !== TaskStatus.DONE);
+  }
 
-    // Fire all side-effects in parallel — they are independent
-    const sideEffects: Promise<void>[] = [];
+  if (dependencyIds !== undefined) {
+    if (dependencyIds.includes(taskId)) {
+      throw new BadRequestException('A task cannot depend on itself');
+    }
 
-    if (oldStatus !== TaskStatus.DONE && newStatus === TaskStatus.DONE) {
-      const completedRecipientId = savedTask.createdBy?.id;
-      if (completedRecipientId) {
-        sideEffects.push(
-          this.createTaskCompletedNotification(
-            savedTask.id,
-            savedTask.title,
-            savedTask.project.id,
-            completedRecipientId,
-            currentUser.id,
-          ),
+    if (dependencyIds.length === 0) {
+      task.dependencies = [];
+    } else {
+      const uniqueDepIds = Array.from(new Set(dependencyIds));
+
+      const foundDeps = await this.taskRepo.find({
+        where: uniqueDepIds.map((id) => ({
+          id,
+          project: { id: task.project.id },
+        })),
+      });
+
+      if (foundDeps.length !== uniqueDepIds.length) {
+        throw new BadRequestException(
+          'One or more dependency tasks were not found in this project',
         );
       }
-    }
 
-    if (meaningfulTaskChanged && newAssigneeId) {
+      task.dependencies = foundDeps;
+    }
+  }
+
+  if (scalarFields.deadline !== undefined) {
+    task.deadline = scalarFields.deadline
+      ? new Date(scalarFields.deadline)
+      : null;
+
+    delete scalarFields.deadline;
+  }
+
+  const oldStatus = task.status;
+
+  Object.assign(task, scalarFields);
+
+  const savedTask = await this.taskRepo.save(task);
+
+  const newStatus = savedTask.status;
+  const newAssigneeId = savedTask.assignee?.id ?? null;
+
+  const newDeadlineTime = savedTask.deadline
+    ? new Date(savedTask.deadline).getTime()
+    : null;
+
+  const newDependencyIds = new Set(
+    (savedTask.dependencies ?? []).map((dependency) => dependency.id),
+  );
+
+  const dependenciesChanged =
+    oldDependencyIds.size !== newDependencyIds.size ||
+    Array.from(oldDependencyIds).some(
+      (dependencyId) => !newDependencyIds.has(dependencyId),
+    );
+
+  const meaningfulTaskChanged =
+    oldTitle !== savedTask.title ||
+    oldDescription !== savedTask.description ||
+    oldPriority !== savedTask.priority ||
+    oldDeadlineTime !== newDeadlineTime ||
+    oldLabel !== savedTask.label ||
+    oldType !== savedTask.type ||
+    oldBoardColumnId !== (savedTask.boardColumn?.id ?? null) ||
+    dependenciesChanged ||
+    (oldStatus !== newStatus && newStatus !== TaskStatus.DONE);
+
+  // Fire all side-effects in parallel — they are independent
+  const sideEffects: Promise<void>[] = [];
+
+  if (oldStatus !== TaskStatus.DONE && newStatus === TaskStatus.DONE) {
+    const completedRecipientId = savedTask.createdBy?.id;
+
+    if (completedRecipientId) {
       sideEffects.push(
-        this.createTaskUpdatedNotification(
+        this.createTaskCompletedNotification(
+          savedTask.id,
+          savedTask.title,
+          savedTask.project.id,
+          completedRecipientId,
+          currentUser.id,
+        ),
+      );
+    }
+  }
+
+  if (meaningfulTaskChanged && newAssigneeId) {
+    sideEffects.push(
+      this.createTaskUpdatedNotification(
+        savedTask.id,
+        savedTask.title,
+        savedTask.project.id,
+        newAssigneeId,
+        currentUser.id,
+      ),
+    );
+  }
+
+  if (oldAssigneeId !== newAssigneeId) {
+    if (oldAssigneeId && !newAssigneeId) {
+      sideEffects.push(
+        this.createTaskUnassignedNotification(
+          savedTask.id,
+          savedTask.title,
+          savedTask.project.id,
+          oldAssigneeId,
+          currentUser.id,
+        ),
+      );
+    } else if (!oldAssigneeId && newAssigneeId) {
+      sideEffects.push(
+        this.createTaskAssignedNotification(
+          savedTask.id,
+          savedTask.title,
+          savedTask.project.id,
+          newAssigneeId,
+          currentUser.id,
+        ),
+      );
+    } else if (
+      oldAssigneeId &&
+      newAssigneeId &&
+      oldAssigneeId !== newAssigneeId
+    ) {
+      sideEffects.push(
+        this.createTaskUnassignedNotification(
+          savedTask.id,
+          savedTask.title,
+          savedTask.project.id,
+          oldAssigneeId,
+          currentUser.id,
+        ),
+      );
+
+      sideEffects.push(
+        this.createTaskAssignedNotification(
           savedTask.id,
           savedTask.title,
           savedTask.project.id,
@@ -782,83 +856,43 @@ export class TasksService {
         ),
       );
     }
-
-    if (oldAssigneeId !== newAssigneeId) {
-      if (oldAssigneeId && !newAssigneeId) {
-        sideEffects.push(
-          this.createTaskUnassignedNotification(
-            savedTask.id,
-            savedTask.title,
-            savedTask.project.id,
-            oldAssigneeId,
-            currentUser.id,
-          ),
-        );
-      } else if (!oldAssigneeId && newAssigneeId) {
-        sideEffects.push(
-          this.createTaskAssignedNotification(
-            savedTask.id,
-            savedTask.title,
-            savedTask.project.id,
-            newAssigneeId,
-            currentUser.id,
-          ),
-        );
-      } else if (
-        oldAssigneeId &&
-        newAssigneeId &&
-        oldAssigneeId !== newAssigneeId
-      ) {
-        sideEffects.push(
-          this.createTaskUnassignedNotification(
-            savedTask.id,
-            savedTask.title,
-            savedTask.project.id,
-            oldAssigneeId,
-            currentUser.id,
-          ),
-        );
-        sideEffects.push(
-          this.createTaskAssignedNotification(
-            savedTask.id,
-            savedTask.title,
-            savedTask.project.id,
-            newAssigneeId,
-            currentUser.id,
-          ),
-        );
-      }
-    }
-
-    let message = `updated task: ${savedTask.title}`;
-    if (dto.status && dto.status !== oldStatus) {
-      const action =
-        dto.status === TaskStatus.DONE ? 'completed' : 'updated status of';
-      message = `${action} task: ${savedTask.title}`;
-    }
-    sideEffects.push(
-      this.activitiesService.logActivity(
-        currentUser.id,
-        savedTask.project.id,
-        message,
-        'task',
-        savedTask.id,
-      ),
-    );
-
-    await Promise.all(sideEffects);
-
-    const payload: TaskUpdatedPayload = {
-      projectId: task.project.id,
-      task: mapTaskToApiTaskSummary(savedTask),
-    };
-
-    this.eventEmitter.emit(
-      DOMAIN_EVENTS.TASK.UPDATED,
-      new TaskUpdatedEvent(payload),
-    );
-    return savedTask;
   }
+
+  let message = `updated task: ${savedTask.title}`;
+
+  if (dto.status && dto.status !== oldStatus) {
+    const action =
+      dto.status === TaskStatus.DONE
+        ? 'completed'
+        : 'updated status of';
+
+    message = `${action} task: ${savedTask.title}`;
+  }
+
+  sideEffects.push(
+    this.activitiesService.logActivity(
+      currentUser.id,
+      savedTask.project.id,
+      message,
+      'task',
+      savedTask.id,
+    ),
+  );
+
+  await Promise.all(sideEffects);
+
+  const payload: TaskUpdatedPayload = {
+    projectId: task.project.id,
+    task: mapTaskToApiTaskSummary(savedTask),
+  };
+
+  this.eventEmitter.emit(
+    DOMAIN_EVENTS.TASK.UPDATED,
+    new TaskUpdatedEvent(payload),
+  );
+
+  return savedTask;
+}
 
   async deleteTask(taskId: string, userId: string) {
     const task = await this.taskRepo.findOne({
