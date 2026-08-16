@@ -871,6 +871,17 @@ export class ProjectsService {
         }
 
         const isTargetOwner = member.project.admin?.id === member.user?.id;
+        const isActorOwner =
+          actor.project?.admin?.id === actor.user?.id ||
+          member.project.admin?.id === actor.user?.id;
+        const isSelfUpdate = actor.id === member.id;
+
+        if (isTargetOwner && !isSelfUpdate) {
+          throw new ForbiddenException(
+            'The project creator role cannot be changed by other members',
+          );
+        }
+
         if (isTargetOwner && targetRole.level !== 100) {
           throw new BadRequestException(
             'Project owner cannot be downgraded here',
@@ -879,11 +890,10 @@ export class ProjectsService {
 
         const actorIsAdmin = actor.role.level === 100;
         const targetIsAdmin = member.role.level === 100;
-        const isSelfUpdate = actor.id === member.id;
 
-        if (actorIsAdmin && targetIsAdmin && !isSelfUpdate) {
+        if (actorIsAdmin && targetIsAdmin && !isSelfUpdate && !isActorOwner) {
           throw new ForbiddenException(
-            'Admins cannot change the role of another admin',
+            'Only the project creator can change the role of another admin',
           );
         }
 
