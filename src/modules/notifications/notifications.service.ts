@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Repository } from 'typeorm';
+import { QueryFailedError, Repository } from 'typeorm';
 
 import { User } from '@modules/users/entities/user.entity';
 import { Notification } from './entities/notification.entity';
@@ -48,11 +48,32 @@ export class NotificationsService {
       projectId: input.projectId ?? null,
       resourceType: input.resourceType ?? null,
       resourceId: input.resourceId ?? null,
+      deduplicationKey: input.deduplicationKey ?? null,
       isRead: false,
       readAt: null,
     });
 
-    const savedNotification = await this.notificationRepo.save(notification);
+    let savedNotification: Notification;
+    try {
+      savedNotification = await this.notificationRepo.save(notification);
+    } catch (error) {
+      const driverError =
+        error instanceof QueryFailedError
+          ? (error.driverError as {
+              code?: string;
+              constraint?: string;
+            })
+          : undefined;
+
+      if (
+        driverError?.code === '23505' &&
+        driverError.constraint === 'UQ_notifications_deduplication_key'
+      ) {
+        return null;
+      }
+
+      throw error;
+    }
 
     this.eventEmitter.emit(
       NOTIFICATION_DOMAIN_EVENTS.CREATED,
