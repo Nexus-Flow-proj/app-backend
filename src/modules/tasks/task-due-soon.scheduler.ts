@@ -14,7 +14,7 @@ export class TaskDueSoonScheduler {
     private readonly notificationsService: NotificationsService,
   ) {}
 
-  @Cron(' * * * * *')
+  @Cron('* * * * *')
   async handleTaskDueSoonNotifications(): Promise<void> {
     this.logger.log('[TASK_DUE_SOON DEBUG] Scheduler triggered');
     let tasks;
