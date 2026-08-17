@@ -108,6 +108,9 @@ export class TasksService {
       String(tomorrow.getMonth() + 1).padStart(2, '0'),
       String(tomorrow.getDate()).padStart(2, '0'),
     ].join('-');
+    this.logger.log(
+      `[TASK_DUE_SOON DEBUG] Tomorrow date: ${tomorrowDate}`,
+    );
 
     return this.taskRepo
       .createQueryBuilder('task')
