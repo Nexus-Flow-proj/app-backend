@@ -39,6 +39,8 @@ import { ProjectAuthEvaluator } from './utils/project-auth.evaluator';
 import { ActivitiesService } from '@modules/activities/activities.service';
 import { NotificationsService } from '@modules/notifications/notifications.service';
 import { NotificationType } from '@modules/notifications/enums/notification-type.enum';
+import { Task } from '@modules/tasks/entities/task.entity';
+import { TaskStatus } from '@modules/tasks/enums/task-status.enum';
 
 export const DEFAULT_ROLE_PRESETS = [
   {
@@ -185,6 +187,7 @@ export class ProjectsService {
     @InjectRepository(User) private userRepo: Repository<User>,
     @InjectRepository(ProjectRoleEntity)
     private projectRoleRepo: Repository<ProjectRoleEntity>,
+    @InjectRepository(Task) private taskRepo: Repository<Task>,
     private mailService: MailService,
     private configService: ConfigService,
     private activitiesService: ActivitiesService,
@@ -337,6 +340,16 @@ export class ProjectsService {
 
   async getProject(projectId: string, userId?: string): Promise<ProjectDto> {
     const project = await this.loadProjectOrFail(projectId);
+    const [tasks, tasksCount] = await this.taskRepo.findAndCount({
+      where: { project: { id: projectId } },
+    });
+
+    const completedTasks = tasks.filter(
+      (task) => task.status === TaskStatus.DONE,
+    ).length;
+    const progress =
+      tasksCount > 0 ? Math.round((completedTasks / tasksCount) * 100) : 0;
+
     const currentMember = userId
       ? project.members?.find((m) => m.user?.id === userId)
       : undefined;
@@ -364,6 +377,9 @@ export class ProjectsService {
       project.members?.length ?? 0,
       project.admin?.id ?? null,
       currentMember,
+      tasksCount,
+      completedTasks,
+      progress,
     );
 
     if (projectDto.currentMember) {
@@ -412,6 +428,22 @@ export class ProjectsService {
       savedProject.admin?.id ?? project.admin?.id ?? null,
       currentMember,
     );
+  }
+
+  async deleteProject(projectId: string, userId: string): Promise<void> {
+    const project = await this.loadProjectOrFail(projectId);
+
+    const isCreator = project.admin?.id === userId;
+    const userMember = project.members?.find((m) => m.user?.id === userId);
+    const isAdmin = userMember?.role?.level === 100;
+
+    if (!isCreator && !isAdmin) {
+      throw new ForbiddenException(
+        'Only project administrators can delete this project',
+      );
+    }
+
+    await this.projectRepo.remove(project);
   }
 
   async inviteMember(
@@ -813,139 +845,142 @@ export class ProjectsService {
 
     const savedMemberViews = await this.projectRepo.manager.transaction(
       async (manager) => {
-      const assignmentMap = new Map<string, string>();
-      for (const assignment of body.assignments) {
-        assignmentMap.set(assignment.memberId, assignment.roleId);
-      }
-
-      const memberIds = Array.from(assignmentMap.keys());
-      const roleIds = Array.from(new Set(assignmentMap.values()));
-
-      const members = await manager.find(ProjectMember, {
-        where: { id: In(memberIds), project: { id: projectId } },
-        relations: { project: { admin: true }, user: true, role: true },
-      });
-
-      const foundMemberIds = new Set(members.map((m) => m.id));
-      for (const memberId of memberIds) {
-        if (!foundMemberIds.has(memberId)) {
-          throw new NotFoundException(
-            `Project member with ID ${memberId} not found in this project`,
-          );
+        const assignmentMap = new Map<string, string>();
+        for (const assignment of body.assignments) {
+          assignmentMap.set(assignment.memberId, assignment.roleId);
         }
-      }
 
-      const roles = await manager.find(ProjectRoleEntity, {
-        where: { id: In(roleIds), project: { id: projectId } },
-      });
+        const memberIds = Array.from(assignmentMap.keys());
+        const roleIds = Array.from(new Set(assignmentMap.values()));
 
-      const foundRoleIds = new Set(roles.map((r) => r.id));
-      for (const roleId of roleIds) {
-        if (!foundRoleIds.has(roleId)) {
-          throw new NotFoundException(
-            `Role with ID ${roleId} not found in this project`,
-          );
+        const members = await manager.find(ProjectMember, {
+          where: { id: In(memberIds), project: { id: projectId } },
+          relations: { project: { admin: true }, user: true, role: true },
+        });
+
+        const foundMemberIds = new Set(members.map((m) => m.id));
+        for (const memberId of memberIds) {
+          if (!foundMemberIds.has(memberId)) {
+            throw new NotFoundException(
+              `Project member with ID ${memberId} not found in this project`,
+            );
+          }
         }
-      }
 
-      const rolesMap = new Map(roles.map((r) => [r.id, r]));
+        const roles = await manager.find(ProjectRoleEntity, {
+          where: { id: In(roleIds), project: { id: projectId } },
+        });
 
-      const currentAdmins = await manager.find(ProjectMember, {
-        where: { project: { id: projectId }, role: { level: 100 } },
-        relations: { role: true, user: true },
-      });
-      const currentAdminIds = new Set(currentAdmins.map((m) => m.id));
+        const foundRoleIds = new Set(roles.map((r) => r.id));
+        for (const roleId of roleIds) {
+          if (!foundRoleIds.has(roleId)) {
+            throw new NotFoundException(
+              `Role with ID ${roleId} not found in this project`,
+            );
+          }
+        }
 
-      let demotions = 0;
-      let promotions = 0;
+        const rolesMap = new Map(roles.map((r) => [r.id, r]));
 
-      const updatedMembers: ProjectMember[] = [];
+        const currentAdmins = await manager.find(ProjectMember, {
+          where: { project: { id: projectId }, role: { level: 100 } },
+          relations: { role: true, user: true },
+        });
+        const currentAdminIds = new Set(currentAdmins.map((m) => m.id));
 
-      for (const member of members) {
-        const targetRoleId = assignmentMap.get(member.id)!;
-        const targetRole = rolesMap.get(targetRoleId)!;
+        let demotions = 0;
+        let promotions = 0;
 
-        if (member.role.id === targetRoleId) {
+        const updatedMembers: ProjectMember[] = [];
+
+        for (const member of members) {
+          const targetRoleId = assignmentMap.get(member.id)!;
+          const targetRole = rolesMap.get(targetRoleId)!;
+
+          if (member.role.id === targetRoleId) {
+            updatedMembers.push(member);
+            continue;
+          }
+
+          const isTargetOwner = member.project.admin?.id === member.user?.id;
+          const isActorOwner =
+            actor.project?.admin?.id === actor.user?.id ||
+            member.project.admin?.id === actor.user?.id;
+          const isSelfUpdate = actor.id === member.id;
+
+          if (isTargetOwner && !isSelfUpdate) {
+            throw new ForbiddenException(
+              'The project creator role cannot be changed by other members',
+            );
+          }
+
+          if (isTargetOwner && targetRole.level !== 100) {
+            throw new BadRequestException(
+              'Project owner cannot be downgraded here',
+            );
+          }
+
+          const actorIsAdmin = actor.role.level === 100;
+          const targetIsAdmin = member.role.level === 100;
+
+          if (actorIsAdmin && targetIsAdmin && !isSelfUpdate && !isActorOwner) {
+            throw new ForbiddenException(
+              'Only the project creator can change the role of another admin',
+            );
+          }
+
+          const canModify = ProjectAuthEvaluator.canModifyMember(actor, member);
+          if (!canModify) {
+            throw new ForbiddenException(
+              'You cannot modify members with an equal or higher role level hierarchy',
+            );
+          }
+
+          if (
+            actor.role.level !== 100 &&
+            targetRole.level >= actor.role.level
+          ) {
+            throw new ForbiddenException(
+              'You cannot assign a role level equal to or higher than your own',
+            );
+          }
+
+          const currentlyIsAdmin = currentAdminIds.has(member.id);
+          const willBeAdmin = targetRole.level === 100;
+
+          if (member.role.id !== targetRoleId) {
+            changedMemberUserIds.push(member.user.id);
+          }
+
+          if (currentlyIsAdmin && !willBeAdmin) {
+            demotions++;
+          } else if (!currentlyIsAdmin && willBeAdmin) {
+            promotions++;
+          }
+
+          member.role = targetRole;
           updatedMembers.push(member);
-          continue;
         }
 
-        const isTargetOwner = member.project.admin?.id === member.user?.id;
-        const isActorOwner =
-          actor.project?.admin?.id === actor.user?.id ||
-          member.project.admin?.id === actor.user?.id;
-        const isSelfUpdate = actor.id === member.id;
-
-        if (isTargetOwner && !isSelfUpdate) {
-          throw new ForbiddenException(
-            'The project creator role cannot be changed by other members',
+        const finalAdminCount = currentAdminIds.size - demotions + promotions;
+        if (finalAdminCount < 1) {
+          const selfDemotions = members.filter(
+            (m) =>
+              m.id === actor.id &&
+              currentAdminIds.has(m.id) &&
+              m.role.level < 100,
           );
-        }
-
-        if (isTargetOwner && targetRole.level !== 100) {
+          if (selfDemotions.length > 0) {
+            throw new BadRequestException(
+              'You are the only admin of this project. At least 2 admins must exist before you can change your own role.',
+            );
+          }
           throw new BadRequestException(
-            'Project owner cannot be downgraded here',
+            'Cannot demote the last admin of this project. There must be at least one admin remaining.',
           );
         }
 
-        const actorIsAdmin = actor.role.level === 100;
-        const targetIsAdmin = member.role.level === 100;
-
-        if (actorIsAdmin && targetIsAdmin && !isSelfUpdate && !isActorOwner) {
-          throw new ForbiddenException(
-            'Only the project creator can change the role of another admin',
-          );
-        }
-
-        const canModify = ProjectAuthEvaluator.canModifyMember(actor, member);
-        if (!canModify) {
-          throw new ForbiddenException(
-            'You cannot modify members with an equal or higher role level hierarchy',
-          );
-        }
-
-        if (actor.role.level !== 100 && targetRole.level >= actor.role.level) {
-          throw new ForbiddenException(
-            'You cannot assign a role level equal to or higher than your own',
-          );
-        }
-
-        const currentlyIsAdmin = currentAdminIds.has(member.id);
-        const willBeAdmin = targetRole.level === 100;
-
-        if (member.role.id !== targetRoleId) {
-          changedMemberUserIds.push(member.user.id);
-        }
-
-        if (currentlyIsAdmin && !willBeAdmin) {
-          demotions++;
-        } else if (!currentlyIsAdmin && willBeAdmin) {
-          promotions++;
-        }
-
-        member.role = targetRole;
-        updatedMembers.push(member);
-      }
-
-      const finalAdminCount = currentAdminIds.size - demotions + promotions;
-      if (finalAdminCount < 1) {
-        const selfDemotions = members.filter(
-          (m) =>
-            m.id === actor.id &&
-            currentAdminIds.has(m.id) &&
-            m.role.level < 100,
-        );
-        if (selfDemotions.length > 0) {
-          throw new BadRequestException(
-            'You are the only admin of this project. At least 2 admins must exist before you can change your own role.',
-          );
-        }
-        throw new BadRequestException(
-          'Cannot demote the last admin of this project. There must be at least one admin remaining.',
-        );
-      }
-
-      const savedMembers = await manager.save(ProjectMember, updatedMembers);
+        const savedMembers = await manager.save(ProjectMember, updatedMembers);
 
         return savedMembers.map((m) => this.toMemberView(m));
       },
@@ -1057,6 +1092,9 @@ export class ProjectsService {
     memberCount: number,
     adminId: string | null,
     currentMember?: ProjectMember,
+    tasksCount?: number,
+    completedTasks?: number,
+    progress?: number,
   ): ProjectDto {
     if (currentMember) {
       currentMember.project = project;
@@ -1070,6 +1108,9 @@ export class ProjectsService {
       adminId,
       draftId: project.draftId ?? null,
       memberCount,
+      tasksCount,
+      completedTasks,
+      progress,
       color: project.color,
       currentMember: currentMember
         ? this.toMemberView(currentMember)

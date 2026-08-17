@@ -6,12 +6,11 @@ dotenv.config();
 export const isProduction = process.env.NODE_ENV === 'production';
 const useSsl =
   process.env.DB_SSL === 'true' ||
-  isProduction ||
-  Boolean(process.env.DATABASE_URL);
+  (isProduction && Boolean(process.env.DATABASE_URL));
 
 export const AppDataSource = new DataSource({
   type: 'postgres',
-  ...(process.env.DATABASE_URL
+  ...(isProduction && process.env.DATABASE_URL
     ? { url: process.env.DATABASE_URL }
     : {
         host: process.env.DB_HOST || 'localhost',

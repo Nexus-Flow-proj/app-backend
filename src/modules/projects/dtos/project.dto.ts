@@ -28,6 +28,15 @@ export class ProjectDto {
   memberCount!: number;
 
   @Expose()
+  tasksCount?: number;
+
+  @Expose()
+  completedTasks?: number;
+
+  @Expose()
+  progress?: number;
+
+  @Expose()
   color: string;
 
   @Expose()

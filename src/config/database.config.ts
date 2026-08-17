@@ -12,19 +12,23 @@ export interface DatabaseConfig {
 }
 export default registerAs(
   'database',
-  (): DatabaseConfig => ({
-    type: 'postgres',
-    url: process.env.DATABASE_URL,
-    host: process.env.DB_HOST || 'localhost',
-    port: parseInt(process.env.DB_PORT || '5432', 10),
-    username: process.env.DB_USERNAME || 'postgres',
-    password: process.env.DB_PASSWORD || 'password',
-    database: process.env.DB_NAME || 'nexus_flow',
-    ssl:
-      process.env.DB_SSL === 'true' ||
-      process.env.NODE_ENV === 'production' ||
-      Boolean(process.env.DATABASE_URL)
-        ? { rejectUnauthorized: false }
-        : undefined,
-  }),
+  (): DatabaseConfig => {
+    const isProduction = process.env.NODE_ENV === 'production';
+    const isLocalDevelopment = !isProduction;
+
+    return {
+      type: 'postgres',
+      url: isProduction ? process.env.DATABASE_URL : undefined,
+      host: process.env.DB_HOST || 'localhost',
+      port: parseInt(process.env.DB_PORT || '5432', 10),
+      username: process.env.DB_USERNAME || 'postgres',
+      password: process.env.DB_PASSWORD || 'password',
+      database: process.env.DB_NAME || 'nexus_flow',
+      ssl:
+        process.env.DB_SSL === 'true' ||
+        (isProduction && Boolean(process.env.DATABASE_URL))
+          ? { rejectUnauthorized: false }
+          : undefined,
+    };
+  },
 );

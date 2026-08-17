@@ -86,8 +86,23 @@ export class ProjectsController {
     @Body() body: UpdateProjectDto,
     @CurrentUser() user: User,
   ): Promise<any> {
-    const data = await this.projectsService.updateProject(projectId, body, user.id);
+    const data = await this.projectsService.updateProject(
+      projectId,
+      body,
+      user.id,
+    );
     return { message: 'Project updated successfully.', data };
+  }
+
+  @Delete(':projectId')
+  @UseGuards(CsrfGuard)
+  @RequirePermission('project', 'deleteProject')
+  async deleteProject(
+    @Param('projectId') projectId: string,
+    @CurrentUser() user: User,
+  ) {
+    await this.projectsService.deleteProject(projectId, user.id);
+    return { message: 'Project Deleted Successfully', data: null };
   }
 
   @Post(':projectId/invites')
