@@ -1,56 +1,41 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as nodemailer from 'nodemailer';
+import { BrevoClient } from '@getbrevo/brevo';
 import { passwordResetTemplate } from './templates/password-reset.template';
 import { projectInviteTemplate } from './templates/project-invite.template';
 
 @Injectable()
-export class MailService implements OnModuleInit {
+export class MailService {
   private readonly logger = new Logger(MailService.name);
-  private transporter: nodemailer.Transporter;
-  private from: string;
+  private readonly brevo: BrevoClient;
+  private readonly fromEmail: string;
+  private readonly fromName: string;
 
   constructor(private configService: ConfigService) {
-    const smtpUser = this.configService.get<string>('mail.smtpUser')!;
-    const smtpPass = this.configService.get<string>('mail.smtpPass')!;
-    this.from = this.configService.get<string>('mail.from') || smtpUser;
+    const apiKey = this.configService.get<string>('mail.brevoApiKey') || '';
+    this.fromEmail =
+      this.configService.get<string>('mail.from') || 'nexusflow.proj@gmail.com';
+    this.fromName =
+      this.configService.get<string>('mail.fromName') || 'NexusFlow';
 
-    this.transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 587,
-      secure: false, // use STARTTLS (upgraded after connection)
-      auth: {
-        user: smtpUser,
-        pass: smtpPass,
-      },
-      tls: {
-        rejectUnauthorized: false,
-      },
-    });
-  }
-
-  async onModuleInit() {
-    try {
-      await this.transporter.verify();
-      this.logger.log('SMTP connection verified successfully');
-    } catch (err) {
-      this.logger.error(
-        'SMTP connection failed — check SMTP_USER / SMTP_PASS env vars',
-        err,
-      );
-    }
+    this.brevo = new BrevoClient({ apiKey });
   }
 
   async sendPasswordReset(email: string, resetUrl: string): Promise<void> {
     try {
-      await this.transporter.sendMail({
-        from: this.from,
-        to: email,
+      await this.brevo.transactionalEmails.sendTransacEmail({
         subject: 'Reset your password',
-        html: passwordResetTemplate(resetUrl),
+        htmlContent: passwordResetTemplate(resetUrl),
+        sender: { name: this.fromName, email: this.fromEmail },
+        to: [{ email }],
       });
-    } catch (err) {
-      this.logger.error(`Failed to send password reset email to ${email}`, err);
+    } catch (err: any) {
+      const errorMsg =
+        err?.response?.body?.message || err?.message || 'Unknown error';
+      this.logger.error(
+        `Failed to send password reset email to ${email}: ${errorMsg}`,
+        err?.stack,
+      );
       throw err;
     }
   }
@@ -63,24 +48,28 @@ export class MailService implements OnModuleInit {
     expiresAt: Date,
   ): Promise<void> {
     try {
-      await this.transporter.sendMail({
-        from: this.from,
-        to: email,
+      await this.brevo.transactionalEmails.sendTransacEmail({
         subject: `Invitation to join ${projectName}`,
-        html: projectInviteTemplate(
+        htmlContent: projectInviteTemplate(
           projectName,
           inviterName,
           inviteLink,
           expiresAt.toISOString(),
         ),
+        sender: { name: this.fromName, email: this.fromEmail },
+        to: [{ email }],
       });
-    } catch (err) {
+    } catch (err: any) {
+      const errorMsg =
+        err?.response?.body?.message || err?.message || 'Unknown error';
       this.logger.error(
-        `Failed to send project invite email to ${email}`,
-        err,
+        `Failed to send project invite email to ${email}: ${errorMsg}`,
+        err?.stack,
       );
       throw err;
     }
   }
 }
+
+
 

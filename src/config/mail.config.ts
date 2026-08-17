@@ -2,9 +2,9 @@ import { registerAs } from '@nestjs/config';
 import { normalizeOrigin } from '@shared/utils/url.util';
 
 export default registerAs('mail', () => ({
-  smtpUser: process.env.SMTP_USER || '',
-  smtpPass: process.env.SMTP_PASS || '',
-  from: process.env.MAIL_FROM || process.env.SMTP_USER || '',
+  brevoApiKey: process.env.BREVO_API_KEY || '',
+  from: process.env.MAIL_FROM || 'nexusflow.proj@gmail.com',
+  fromName: process.env.MAIL_FROM_NAME || 'NexusFlow',
   frontendUrl: normalizeOrigin(
     process.env.FRONTEND_URL || 'http://localhost:3000',
   ),
