@@ -16,10 +16,12 @@ export class TaskDueSoonScheduler {
 
   @Cron(' * * * * *')
   async handleTaskDueSoonNotifications(): Promise<void> {
+    this.logger.log('[TASK_DUE_SOON DEBUG] Scheduler triggered');
     let tasks;
 
     try {
       tasks = await this.tasksService.findTasksDueTomorrow();
+      this.logger.log(`[TASK_DUE_SOON DEBUG] Tasks found: ${tasks.length}`);
     } catch (error) {
       this.logger.error(
         'Failed to retrieve tasks due tomorrow',
@@ -30,6 +32,10 @@ export class TaskDueSoonScheduler {
 
     for (const task of tasks) {
       try {
+        this.logger.log(
+          '[TASK_DUE_SOON DEBUG] Task: ' +
+            `taskId=${task.id}, deadline=${task.deadline}, assigneeId=${task.assigneeId}, projectId=${task.projectId}`,
+        );
         const deadline = task.deadline.slice(0, 10);
         const deduplicationKey =
           'TASK_DUE_SOON:' +
@@ -39,7 +45,14 @@ export class TaskDueSoonScheduler {
           ':' +
           task.assigneeId;
 
-        await this.notificationsService.create({
+        this.logger.log(
+          `[TASK_DUE_SOON DEBUG] Creating notification for task: ${task.id}`,
+        );
+        this.logger.log(
+          `[TASK_DUE_SOON DEBUG] deduplicationKey: ${deduplicationKey}`,
+        );
+
+        const notification = await this.notificationsService.create({
           recipientId: task.assigneeId,
           actorId: null,
           type: NotificationType.TASK_DUE_SOON,
@@ -50,6 +63,12 @@ export class TaskDueSoonScheduler {
           resourceId: task.id,
           deduplicationKey,
         });
+
+        this.logger.log(
+          notification
+            ? '[TASK_DUE_SOON DEBUG] notification created successfully'
+            : '[TASK_DUE_SOON DEBUG] notification skipped because duplicate',
+        );
       } catch (error) {
         this.logger.error(
           'Failed to create TASK_DUE_SOON notification for taskId=' +
