@@ -30,6 +30,14 @@ export class Notification {
   @Column({ name: 'resource_id', type: 'varchar', nullable: true })
   resourceId!: string | null;
 
+  @Column({
+    name: 'deduplication_key',
+    type: 'varchar',
+    nullable: true,
+    unique: true,
+  })
+  deduplicationKey!: string | null;
+
   @Column({ name: 'is_read', type: 'boolean', default: false })
   isRead!: boolean;
 

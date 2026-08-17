@@ -9,4 +9,5 @@ export interface CreateNotificationInput {
   projectId?: string | null;
   resourceType?: string | null;
   resourceId?: string | null;
+  deduplicationKey?: string | null;
 }

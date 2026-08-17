@@ -53,6 +53,14 @@ import { SubtaskDeletedEvent } from '@modules/realtime/domain-events/subtask-del
 import { NotificationsService } from '@modules/notifications/notifications.service';
 import { NotificationType } from '@modules/notifications/enums/notification-type.enum';
 
+export interface TaskDueTomorrow {
+  id: string;
+  title: string;
+  deadline: string;
+  projectId: string;
+  assigneeId: string;
+}
+
 @Injectable()
 export class TasksService {
   private readonly logger = new Logger(TasksService.name);
@@ -91,6 +99,32 @@ export class TasksService {
     private readonly eventEmitter: EventEmitter2,
     private readonly storageService: StorageService,
   ) {}
+
+  async findTasksDueTomorrow(): Promise<TaskDueTomorrow[]> {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowDate = [
+      tomorrow.getFullYear(),
+      String(tomorrow.getMonth() + 1).padStart(2, '0'),
+      String(tomorrow.getDate()).padStart(2, '0'),
+    ].join('-');
+
+    return this.taskRepo
+      .createQueryBuilder('task')
+      .innerJoin('task.project', 'project')
+      .innerJoin('task.assignee', 'assignee')
+      .select('task.id', 'id')
+      .addSelect('task.title', 'title')
+      .addSelect('task.deadline', 'deadline')
+      .addSelect('project.id', 'projectId')
+      .addSelect('assignee.id', 'assigneeId')
+      .where('task.deadline = :tomorrowDate', { tomorrowDate })
+      .andWhere('task.status != :doneStatus', {
+        doneStatus: TaskStatus.DONE,
+      })
+      .andWhere('task.assignee_id IS NOT NULL')
+      .getRawMany<TaskDueTomorrow>();
+  }
 
   // ─── Helpers ───────────────────────────────────────────────────────────
 
@@ -146,152 +180,36 @@ export class TasksService {
     return task;
   }
 
-  private async createTaskAssignedNotification(
-    taskId: string,
-    taskTitle: string,
-    projectId: string,
-    recipientId: string,
-    actorId: string,
-  ): Promise<void> {
-    if (recipientId === actorId) {
+  private async createTaskNotification(input: {
+    taskId: string;
+    recipientId: string;
+    actorId?: string | null;
+    type: NotificationType;
+    title: string;
+    message: string;
+    projectId: string;
+    resourceType: string;
+    resourceId: string;
+    logMessage: string;
+  }): Promise<void> {
+    if (input.actorId && input.recipientId === input.actorId) {
       return;
     }
 
     try {
       await this.notificationsService.create({
-        recipientId,
-        actorId,
-        type: NotificationType.TASK_ASSIGNED,
-        title: 'Task assigned',
-        message: `You were assigned to task: ${taskTitle}`,
-        projectId,
-        resourceType: 'TASK',
-        resourceId: taskId,
+        recipientId: input.recipientId,
+        actorId: input.actorId,
+        type: input.type,
+        title: input.title,
+        message: input.message,
+        projectId: input.projectId,
+        resourceType: input.resourceType,
+        resourceId: input.resourceId,
       });
     } catch (error) {
       this.logger.error(
-        `Failed to create TASK_ASSIGNED notification for taskId=${taskId}, recipientId=${recipientId}`,
-        error instanceof Error ? error.stack : undefined,
-      );
-    }
-  }
-
-  private async createTaskUnassignedNotification(
-    taskId: string,
-    taskTitle: string,
-    projectId: string,
-    recipientId: string,
-    actorId: string,
-  ): Promise<void> {
-    if (recipientId === actorId) {
-      return;
-    }
-
-    try {
-      await this.notificationsService.create({
-        recipientId,
-        actorId,
-        type: NotificationType.TASK_UNASSIGNED,
-        title: 'Task unassigned',
-        message: `You were unassigned from task: ${taskTitle}`,
-        projectId,
-        resourceType: 'TASK',
-        resourceId: taskId,
-      });
-    } catch (error) {
-      this.logger.error(
-        `Failed to create TASK_UNASSIGNED notification for taskId=${taskId}, recipientId=${recipientId}`,
-        error instanceof Error ? error.stack : undefined,
-      );
-    }
-  }
-
-  private async createTaskCompletedNotification(
-    taskId: string,
-    taskTitle: string,
-    projectId: string,
-    recipientId: string,
-    actorId: string,
-  ): Promise<void> {
-    if (recipientId === actorId) {
-      return;
-    }
-
-    try {
-      await this.notificationsService.create({
-        recipientId,
-        actorId,
-        type: NotificationType.TASK_COMPLETED,
-        title: 'Task completed',
-        message: `Task completed: ${taskTitle}`,
-        projectId,
-        resourceType: 'TASK',
-        resourceId: taskId,
-      });
-    } catch (error) {
-      this.logger.error(
-        `Failed to create TASK_COMPLETED notification for taskId=${taskId}, recipientId=${recipientId}`,
-        error instanceof Error ? error.stack : undefined,
-      );
-    }
-  }
-
-  private async createTaskUpdatedNotification(
-    taskId: string,
-    taskTitle: string,
-    projectId: string,
-    recipientId: string,
-    actorId: string,
-  ): Promise<void> {
-    if (recipientId === actorId) {
-      return;
-    }
-
-    try {
-      await this.notificationsService.create({
-        recipientId,
-        actorId,
-        type: NotificationType.TASK_UPDATED,
-        title: 'Task updated',
-        message: `Task updated: ${taskTitle}`,
-        projectId,
-        resourceType: 'TASK',
-        resourceId: taskId,
-      });
-    } catch (error) {
-      this.logger.error(
-        `Failed to create TASK_UPDATED notification for taskId=${taskId}, recipientId=${recipientId}`,
-        error instanceof Error ? error.stack : undefined,
-      );
-    }
-  }
-
-  private async createCommentAddedNotification(
-    taskId: string,
-    taskTitle: string,
-    commentId: string,
-    projectId: string,
-    recipientId: string,
-    actorId: string,
-  ): Promise<void> {
-    if (recipientId === actorId) {
-      return;
-    }
-
-    try {
-      await this.notificationsService.create({
-        recipientId,
-        actorId,
-        type: NotificationType.COMMENT_ADDED,
-        title: 'New comment added',
-        message: `New comment on task: ${taskTitle}`,
-        projectId,
-        resourceType: 'COMMENT',
-        resourceId: commentId,
-      });
-    } catch (error) {
-      this.logger.error(
-        `Failed to create COMMENT_ADDED notification for taskId=${taskId}, recipientId=${recipientId}`,
+        input.logMessage,
         error instanceof Error ? error.stack : undefined,
       );
     }
@@ -491,13 +409,18 @@ export class TasksService {
     const sideEffects: Promise<void>[] = [];
     if (assignee && assignee.id !== creatorId) {
       sideEffects.push(
-        this.createTaskAssignedNotification(
-          savedTask.id,
-          savedTask.title,
+        this.createTaskNotification({
+          taskId: savedTask.id,
+          recipientId: assignee.id,
+          actorId: creatorId,
+          type: NotificationType.TASK_ASSIGNED,
+          title: 'Task assigned',
+          message: `You were assigned to task: ${savedTask.title}`,
           projectId,
-          assignee.id,
-          creatorId,
-        ),
+          resourceType: 'TASK',
+          resourceId: savedTask.id,
+          logMessage: `Failed to create TASK_ASSIGNED notification for taskId=${savedTask.id}, recipientId=${assignee.id}`,
+        }),
       );
     }
     sideEffects.push(
@@ -787,49 +710,69 @@ export class TasksService {
 
     if (completedRecipientId) {
       sideEffects.push(
-        this.createTaskCompletedNotification(
-          savedTask.id,
-          savedTask.title,
-          savedTask.project.id,
-          completedRecipientId,
-          currentUser.id,
-        ),
+        this.createTaskNotification({
+          taskId: savedTask.id,
+          recipientId: completedRecipientId,
+          actorId: currentUser.id,
+          type: NotificationType.TASK_COMPLETED,
+          title: 'Task completed',
+          message: `Task completed: ${savedTask.title}`,
+          projectId: savedTask.project.id,
+          resourceType: 'TASK',
+          resourceId: savedTask.id,
+          logMessage: `Failed to create TASK_COMPLETED notification for taskId=${savedTask.id}, recipientId=${completedRecipientId}`,
+        }),
       );
     }
   }
 
   if (meaningfulTaskChanged && newAssigneeId) {
     sideEffects.push(
-      this.createTaskUpdatedNotification(
-        savedTask.id,
-        savedTask.title,
-        savedTask.project.id,
-        newAssigneeId,
-        currentUser.id,
-      ),
+      this.createTaskNotification({
+        taskId: savedTask.id,
+        recipientId: newAssigneeId,
+        actorId: currentUser.id,
+        type: NotificationType.TASK_UPDATED,
+        title: 'Task updated',
+        message: `Task updated: ${savedTask.title}`,
+        projectId: savedTask.project.id,
+        resourceType: 'TASK',
+        resourceId: savedTask.id,
+        logMessage: `Failed to create TASK_UPDATED notification for taskId=${savedTask.id}, recipientId=${newAssigneeId}`,
+      }),
     );
   }
 
   if (oldAssigneeId !== newAssigneeId) {
     if (oldAssigneeId && !newAssigneeId) {
       sideEffects.push(
-        this.createTaskUnassignedNotification(
-          savedTask.id,
-          savedTask.title,
-          savedTask.project.id,
-          oldAssigneeId,
-          currentUser.id,
-        ),
+        this.createTaskNotification({
+          taskId: savedTask.id,
+          recipientId: oldAssigneeId,
+          actorId: currentUser.id,
+          type: NotificationType.TASK_UNASSIGNED,
+          title: 'Task unassigned',
+          message: `You were unassigned from task: ${savedTask.title}`,
+          projectId: savedTask.project.id,
+          resourceType: 'TASK',
+          resourceId: savedTask.id,
+          logMessage: `Failed to create TASK_UNASSIGNED notification for taskId=${savedTask.id}, recipientId=${oldAssigneeId}`,
+        }),
       );
     } else if (!oldAssigneeId && newAssigneeId) {
       sideEffects.push(
-        this.createTaskAssignedNotification(
-          savedTask.id,
-          savedTask.title,
-          savedTask.project.id,
-          newAssigneeId,
-          currentUser.id,
-        ),
+        this.createTaskNotification({
+          taskId: savedTask.id,
+          recipientId: newAssigneeId,
+          actorId: currentUser.id,
+          type: NotificationType.TASK_ASSIGNED,
+          title: 'Task assigned',
+          message: `You were assigned to task: ${savedTask.title}`,
+          projectId: savedTask.project.id,
+          resourceType: 'TASK',
+          resourceId: savedTask.id,
+          logMessage: `Failed to create TASK_ASSIGNED notification for taskId=${savedTask.id}, recipientId=${newAssigneeId}`,
+        }),
       );
     } else if (
       oldAssigneeId &&
@@ -837,23 +780,33 @@ export class TasksService {
       oldAssigneeId !== newAssigneeId
     ) {
       sideEffects.push(
-        this.createTaskUnassignedNotification(
-          savedTask.id,
-          savedTask.title,
-          savedTask.project.id,
-          oldAssigneeId,
-          currentUser.id,
-        ),
+        this.createTaskNotification({
+          taskId: savedTask.id,
+          recipientId: oldAssigneeId,
+          actorId: currentUser.id,
+          type: NotificationType.TASK_UNASSIGNED,
+          title: 'Task unassigned',
+          message: `You were unassigned from task: ${savedTask.title}`,
+          projectId: savedTask.project.id,
+          resourceType: 'TASK',
+          resourceId: savedTask.id,
+          logMessage: `Failed to create TASK_UNASSIGNED notification for taskId=${savedTask.id}, recipientId=${oldAssigneeId}`,
+        }),
       );
 
       sideEffects.push(
-        this.createTaskAssignedNotification(
-          savedTask.id,
-          savedTask.title,
-          savedTask.project.id,
-          newAssigneeId,
-          currentUser.id,
-        ),
+        this.createTaskNotification({
+          taskId: savedTask.id,
+          recipientId: newAssigneeId,
+          actorId: currentUser.id,
+          type: NotificationType.TASK_ASSIGNED,
+          title: 'Task assigned',
+          message: `You were assigned to task: ${savedTask.title}`,
+          projectId: savedTask.project.id,
+          resourceType: 'TASK',
+          resourceId: savedTask.id,
+          logMessage: `Failed to create TASK_ASSIGNED notification for taskId=${savedTask.id}, recipientId=${newAssigneeId}`,
+        }),
       );
     }
   }
@@ -1059,14 +1012,18 @@ export class TasksService {
     const sideEffects: Promise<void>[] = [];
     if (task.assignee?.id) {
       sideEffects.push(
-        this.createCommentAddedNotification(
-          task.id,
-          task.title,
-          savedComment.id,
-          task.project.id,
-          task.assignee.id,
-          userId,
-        ),
+        this.createTaskNotification({
+          taskId: task.id,
+          recipientId: task.assignee.id,
+          actorId: userId,
+          type: NotificationType.COMMENT_ADDED,
+          title: 'New comment added',
+          message: `New comment on task: ${task.title}`,
+          projectId: task.project.id,
+          resourceType: 'COMMENT',
+          resourceId: savedComment.id,
+          logMessage: `Failed to create COMMENT_ADDED notification for taskId=${task.id}, recipientId=${task.assignee.id}`,
+        }),
       );
     }
     sideEffects.push(

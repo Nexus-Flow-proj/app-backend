@@ -13,6 +13,7 @@ import { Board } from '@modules/boards/entities/board.entity';
 import { ProjectRole } from '@modules/projects/entities/project-role.entity';
 import { ActivitiesModule } from '@modules/activities/activities.module';
 import { NotificationsModule } from '@modules/notifications/notifications.module';
+import { TaskDueSoonScheduler } from './task-due-soon.scheduler';
 
 @Module({
   imports: [
@@ -31,7 +32,7 @@ import { NotificationsModule } from '@modules/notifications/notifications.module
     NotificationsModule,
   ],
   controllers: [TasksController],
-  providers: [TasksService],
+  providers: [TasksService, TaskDueSoonScheduler],
   exports: [TypeOrmModule, TasksService],
 })
 export class TasksModule {}
