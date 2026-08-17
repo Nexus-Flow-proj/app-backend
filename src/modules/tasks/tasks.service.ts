@@ -53,6 +53,14 @@ import { SubtaskDeletedEvent } from '@modules/realtime/domain-events/subtask-del
 import { NotificationsService } from '@modules/notifications/notifications.service';
 import { NotificationType } from '@modules/notifications/enums/notification-type.enum';
 
+export interface TaskDueTomorrow {
+  id: string;
+  title: string;
+  deadline: string;
+  projectId: string;
+  assigneeId: string;
+}
+
 @Injectable()
 export class TasksService {
   private readonly logger = new Logger(TasksService.name);
@@ -91,6 +99,32 @@ export class TasksService {
     private readonly eventEmitter: EventEmitter2,
     private readonly storageService: StorageService,
   ) {}
+
+  async findTasksDueTomorrow(): Promise<TaskDueTomorrow[]> {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowDate = [
+      tomorrow.getFullYear(),
+      String(tomorrow.getMonth() + 1).padStart(2, '0'),
+      String(tomorrow.getDate()).padStart(2, '0'),
+    ].join('-');
+
+    return this.taskRepo
+      .createQueryBuilder('task')
+      .innerJoin('task.project', 'project')
+      .innerJoin('task.assignee', 'assignee')
+      .select('task.id', 'id')
+      .addSelect('task.title', 'title')
+      .addSelect('task.deadline', 'deadline')
+      .addSelect('project.id', 'projectId')
+      .addSelect('assignee.id', 'assigneeId')
+      .where('task.deadline = :tomorrowDate', { tomorrowDate })
+      .andWhere('task.status != :doneStatus', {
+        doneStatus: TaskStatus.DONE,
+      })
+      .andWhere('task.assignee_id IS NOT NULL')
+      .getRawMany<TaskDueTomorrow>();
+  }
 
   // ─── Helpers ───────────────────────────────────────────────────────────
 
