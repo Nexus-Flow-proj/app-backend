@@ -36,7 +36,10 @@ export class TaskDueSoonScheduler {
           '[TASK_DUE_SOON DEBUG] Task: ' +
             `taskId=${task.id}, deadline=${task.deadline}, assigneeId=${task.assigneeId}, projectId=${task.projectId}`,
         );
-        const deadline = task.deadline.slice(0, 10);
+        const deadline =
+          task.deadline instanceof Date
+            ? task.deadline.toISOString().slice(0, 10)
+            : String(task.deadline).slice(0, 10);
         const deduplicationKey =
           'TASK_DUE_SOON:' +
           task.id +
