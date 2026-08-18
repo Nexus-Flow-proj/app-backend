@@ -8,6 +8,7 @@ import { UsersModule } from './modules/users/users.module';
 import jwtConfig from './config/jwt.config';
 import mailConfig from 'config/mail.config';
 import throttlerConfig from 'config/throttler.config';
+import googleConfig from './config/google.config';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigurableThrottlerGuard } from '@shared/guards/configurable-throttler.guard';
@@ -27,7 +28,14 @@ import { ScheduleModule } from '@nestjs/schedule';
 @Module({
   imports: [
     ConfigModule.forRoot({
-      load: [databaseConfig, envConfig, jwtConfig, mailConfig, throttlerConfig],
+      load: [
+        databaseConfig,
+        envConfig,
+        jwtConfig,
+        mailConfig,
+        throttlerConfig,
+        googleConfig,
+      ],
       isGlobal: true,
     }),
     ThrottlerModule.forRootAsync({

@@ -68,6 +68,19 @@ export class UsersService {
     };
   }
 
+  async deleteAvatar(userId: string): Promise<void> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found.');
+    }
+
+    if (user.avatarUrl) {
+      await this.storageService.deleteAvatar(user.avatarUrl);
+      user.avatarUrl = null;
+      await this.userRepository.save(user);
+    }
+  }
+
   async getMe(userId: string): Promise<UserResponseDto> {
     const user = await this.userRepository.findOne({
       where: { id: userId },

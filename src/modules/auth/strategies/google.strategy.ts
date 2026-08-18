@@ -1,6 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { Strategy } from 'passport-google-oauth20';
+import { ConfigService } from '@nestjs/config';
 import {
   AuthService,
   GoogleAuthFlow,
@@ -21,12 +22,23 @@ interface GooglePassportProfile {
 
 @Injectable()
 export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
-  constructor(private readonly authService: AuthService) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+  constructor(
+    private readonly authService: AuthService,
+    private readonly configService: ConfigService,
+  ) {
     super({
-      clientID: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-      callbackURL: process.env.GOOGLE_CALLBACK_URL!,
+      clientID:
+        configService.get<string>('google.clientId') ||
+        process.env.GOOGLE_CLIENT_ID ||
+        '',
+      clientSecret:
+        configService.get<string>('google.clientSecret') ||
+        process.env.GOOGLE_CLIENT_SECRET ||
+        '',
+      callbackURL:
+        configService.get<string>('google.callbackUrl') ||
+        process.env.GOOGLE_CALLBACK_URL ||
+        '',
       scope: ['email', 'profile'],
       passReqToCallback: true,
     });

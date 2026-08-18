@@ -17,6 +17,7 @@ import { LoginDto } from '../dtos/login.dto';
 import { PasswordResetToken } from '../entities/password-reset-token.entity';
 import { MailService } from '@shared/providers/mail/mail.service';
 import { GoogleUserDto } from '../dtos/google-user.dto';
+import { Cron } from '@nestjs/schedule';
 import { UserResponseDto } from '@modules/users/dtos/user-response.dto';
 import { toUserResponse } from '@modules/users/mappers/user.mapper';
 import { ProjectsService } from '@modules/projects/projects.service';
@@ -74,7 +75,6 @@ export class AuthService {
     });
     const savedUser = await this.userRepository.save(newUser);
 
-    // 💡 If an invitation token is attached, intercept and consume it instantly!
     if (dto.inviteToken) {
       try {
         await this.projectsService.acceptInvite(dto.inviteToken, savedUser.id);
@@ -218,8 +218,6 @@ export class AuthService {
   async resetPassword(token: string, newPassword: string): Promise<void> {
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
 
-    const passwordHash = await bcrypt.hash(newPassword, 10);
-
     await this.dataSource.transaction(async (manager) => {
       const storedToken = await manager.findOne(PasswordResetToken, {
         where: { tokenHash },
@@ -232,6 +230,8 @@ export class AuthService {
         throw new UnauthorizedException('Token already used');
       if (storedToken.expiresAt < new Date())
         throw new UnauthorizedException('Token expired');
+
+      const passwordHash = await bcrypt.hash(newPassword, 10);
 
       await manager.update(User, storedToken.userId, { passwordHash });
 
@@ -247,7 +247,6 @@ export class AuthService {
     dto: GoogleUserDto,
     flow: GoogleAuthFlow,
   ): Promise<GoogleAuthResult> {
-    // 1. Single DB query lookup by googleId OR email
     const existingUser = await this.userRepository.findOne({
       where: [{ googleId: dto.googleId }, { email: dto.email }],
     });
@@ -255,13 +254,11 @@ export class AuthService {
     if (existingUser) {
       let isModified = false;
 
-      // Link googleId if account was created via standard email signup
       if (!existingUser.googleId) {
         existingUser.googleId = dto.googleId;
         isModified = true;
       }
 
-      // Fill in avatarUrl if user has no avatar set
       if (!existingUser.avatarUrl && dto.avatarUrl) {
         existingUser.avatarUrl = dto.avatarUrl;
         isModified = true;
@@ -274,7 +271,6 @@ export class AuthService {
       return { ok: true, flow, user };
     }
 
-    // 2. User does not exist -> Create new user
     const newUser = this.userRepository.create({
       googleId: dto.googleId,
       email: dto.email,
@@ -296,24 +292,25 @@ export class AuthService {
     return this.handleGoogleAuth(dto, 'signup');
   }
 
-  async getMe(userId: string): Promise<UserResponseDto> {
-    const user = await this.userRepository.findOne({
-      where: { id: userId },
-      relations: {
-        skills: true,
-        projectMemberships: {
-          project: true,
-          role: true,
-        },
-        ownedProjects: true,
-      },
-    });
+  @Cron('0 3 * * *')
+  async purgeExpiredTokens(): Promise<void> {
+    const now = new Date();
 
-    if (!user) {
-      throw new UnauthorizedException('User not found');
-    }
+    const { affected: refreshCount } = await this.refreshTokenRepository
+      .createQueryBuilder()
+      .delete()
+      .where('expires_at < :now', { now })
+      .execute();
 
-    return toUserResponse(user);
+    const { affected: resetCount } = await this.passwordResetTokenRepository
+      .createQueryBuilder()
+      .delete()
+      .where('expires_at < :now OR used_at IS NOT NULL', { now })
+      .execute();
+
+    this.logger.log(
+      `Purged ${refreshCount ?? 0} expired refresh tokens and ${resetCount ?? 0} expired/used password reset tokens`,
+    );
   }
 
   private async generateTokens(

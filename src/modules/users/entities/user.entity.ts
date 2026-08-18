@@ -27,16 +27,16 @@ export class User {
   lastName!: string;
 
   @Column({ nullable: true })
-  title!: string;
+  title!: string | null;
 
   @Column({ type: 'text', nullable: true })
-  bio!: string;
+  bio!: string | null;
 
   @Column({ name: 'avatar_url', nullable: true })
-  avatarUrl!: string;
+  avatarUrl!: string | null;
 
   @Column({ name: 'password_hash', nullable: true, select: false })
-  passwordHash!: string;
+  passwordHash!: string | null;
 
   @OneToMany(() => RefreshToken, (rt) => rt.user)
   refreshTokens!: RefreshToken[];

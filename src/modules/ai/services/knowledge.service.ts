@@ -163,42 +163,39 @@ export class KnowledgeService {
         return [];
       }
 
-      const vectorLiteral = `[${queryEmbedding.join(',')}]`;
-      const minDistance = 1 - minSimilarity;
+      const chunks = await this.chunkRepo
+        .createQueryBuilder('chunk')
+        .addSelect('chunk.embedding')
+        .where('chunk.projectId = :projectId', { projectId })
+        .getMany();
 
-      const rows: Array<{
-        id: string;
-        project_id: string;
-        title: string;
-        content: string;
-        source_type: string;
-        similarity: number;
-      }> = await this.chunkRepo.query(
-        `
-        SELECT
-          id,
-          project_id,
-          title,
-          content,
-          source_type,
-          ROUND(CAST(1 - (embedding <=> $1::vector) AS numeric), 3) AS similarity
-        FROM knowledge_chunks
-        WHERE project_id = $2
-          AND (embedding <=> $1::vector) <= $3
-        ORDER BY embedding <=> $1::vector
-        LIMIT $4
-        `,
-        [vectorLiteral, projectId, minDistance, limit],
-      );
+      const results: KnowledgeSearchResult[] = [];
 
-      return rows.map((row) => ({
-        id: row.id,
-        projectId: row.project_id,
-        title: row.title,
-        content: row.content,
-        sourceType: row.source_type,
-        similarity: Number(row.similarity),
-      }));
+      for (const chunk of chunks) {
+        if (!chunk.embedding || chunk.embedding.length === 0) {
+          continue;
+        }
+
+        const similarity = this.embeddingService.calculateCosineSimilarity(
+          queryEmbedding,
+          chunk.embedding,
+        );
+
+        if (similarity >= minSimilarity) {
+          results.push({
+            id: chunk.id,
+            projectId: chunk.projectId,
+            title: chunk.title,
+            content: chunk.content,
+            sourceType: chunk.sourceType,
+            similarity,
+          });
+        }
+      }
+
+      return results
+        .sort((a, b) => b.similarity - a.similarity)
+        .slice(0, limit);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(

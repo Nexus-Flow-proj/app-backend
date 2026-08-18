@@ -13,12 +13,14 @@ import { PasswordResetToken } from './entities/password-reset-token.entity';
 import { MailModule } from '@shared/providers/mail/mail.module';
 import { GoogleStrategy } from './strategies/google.strategy';
 import { ProjectsModule } from '@modules/projects/projects.module';
+import { UsersModule } from '@modules/users/users.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([RefreshToken, User, PasswordResetToken]),
     PassportModule,
     MailModule,
+    UsersModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

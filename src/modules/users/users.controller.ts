@@ -3,6 +3,7 @@ import {
   Post,
   Patch,
   Get,
+  Delete,
   UseGuards,
   UseInterceptors,
   UploadedFile,
@@ -81,6 +82,16 @@ export class UsersController {
     return {
       message: 'Avatar updated successfully.',
       data,
+    };
+  }
+
+  // ─── DELETE /users/me/avatar ───────────────────────────
+  @Delete('me/avatar')
+  @UseGuards(CsrfGuard)
+  async deleteAvatar(@CurrentUser() user: User) {
+    await this.usersService.deleteAvatar(user.id);
+    return {
+      message: 'Avatar deleted successfully.',
     };
   }
 }

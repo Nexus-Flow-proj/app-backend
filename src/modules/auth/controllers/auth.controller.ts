@@ -31,11 +31,13 @@ import { GoogleAuthGuard } from '@shared/guards/google-auth.guard';
 import { ConfigService } from '@nestjs/config';
 import { EnvConfig } from '../../../config/env.config';
 import { GoogleAuthResult } from '../services/auth.service';
+import { UsersService } from '@modules/users/users.service';
 
 @Controller('auth')
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
+    private readonly usersService: UsersService,
     private readonly configService: ConfigService,
   ) {}
 
@@ -96,7 +98,7 @@ export class AuthController {
     return {
       message: 'Current user fetched successfully.',
       data: {
-        user: await this.authService.getMe(user.id),
+        user: await this.usersService.getMe(user.id),
         csrfToken: cookies.csrf_token,
       },
     };
@@ -157,6 +159,7 @@ export class AuthController {
 
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
+  @ThrottleKey('global')
   async resetPassword(@Body() dto: ResetPasswordDto) {
     await this.authService.resetPassword(dto.token, dto.newPassword);
     return {
