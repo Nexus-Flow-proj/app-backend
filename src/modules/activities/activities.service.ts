@@ -1,30 +1,72 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { OnEvent } from '@nestjs/event-emitter';
 import { ActivityLog } from './entities/activity-log.entity';
 import { Project } from '@modules/projects/entities/project.entity';
-import { User } from '@modules/users/entities/user.entity';
+import { ACTIVITY_EVENTS } from './constants/activity-events';
+import { ActivityLoggedEvent } from './events/activity-logged.event';
 
 @Injectable()
 export class ActivitiesService {
+  private readonly logger = new Logger(ActivitiesService.name);
+
   constructor(
     @InjectRepository(ActivityLog)
     private activityLogRepo: Repository<ActivityLog>,
     @InjectRepository(Project)
     private projectRepo: Repository<Project>,
-    @InjectRepository(User)
-    private userRepo: Repository<User>,
   ) {}
 
+  @OnEvent(ACTIVITY_EVENTS.LOGGED, { async: true })
+  async handleActivityLogged(event: ActivityLoggedEvent) {
+    try {
+      await this.logActivity(
+        event.actorId,
+        event.projectId,
+        event.message,
+        event.entityType,
+        event.entityId,
+        event.projectName,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to process activity log event: ${(error as Error).message}`,
+        (error as Error).stack,
+      );
+    }
+  }
+
   async listProjectActivities(projectId: string, page = 1, limit = 50) {
+    const safeLimit = Math.min(Math.max(1, limit), 100);
+    const safePage = Math.max(1, page);
+
     const [activities, total] = await this.activityLogRepo.findAndCount({
       where: { project: { id: projectId } },
       relations: { actor: true, project: true },
+      select: {
+        id: true,
+        message: true,
+        projectName: true,
+        entityType: true,
+        entityId: true,
+        createdAt: true,
+        project: {
+          id: true,
+        },
+        actor: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          avatarUrl: true,
+        },
+      },
       order: { createdAt: 'DESC' },
-      take: limit,
-      skip: (page - 1) * limit,
+      take: safeLimit,
+      skip: (safePage - 1) * safeLimit,
     });
-    return { activities, total, page, limit };
+    return { activities, total, page: safePage, limit: safeLimit };
   }
 
   async deleteActivity(id: string) {
@@ -40,30 +82,25 @@ export class ActivitiesService {
     message: string,
     entityType?: string,
     entityId?: string,
+    projectName?: string,
   ) {
-    const actor = await this.userRepo.findOne({
-      where: { id: actorId },
-      select: { id: true, email: true, firstName: true, lastName: true, avatarUrl: true },
-    });
-    if (!actor) return;
+    let resolvedProjectName = projectName || null;
 
-    let project: Project | null = null;
-    let projectName: string | null = null;
-
-    if (projectId) {
-      project = await this.projectRepo.findOne({ where: { id: projectId } });
-      projectName = project ? project.name : null;
+    if (projectId && !resolvedProjectName) {
+      const project = await this.projectRepo.findOne({
+        where: { id: projectId },
+        select: { id: true, name: true },
+      });
+      resolvedProjectName = project ? project.name : null;
     }
 
-    const activity = this.activityLogRepo.create({
-      actor,
-      project,
-      projectName,
+    await this.activityLogRepo.insert({
+      actor: { id: actorId },
+      project: projectId ? { id: projectId } : null,
+      projectName: resolvedProjectName,
       message,
       entityType: entityType || null,
       entityId: entityId || null,
-    });
-
-    await this.activityLogRepo.save(activity);
+    } as any);
   }
 }

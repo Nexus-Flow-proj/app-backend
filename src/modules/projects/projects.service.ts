@@ -37,6 +37,9 @@ import {
 } from './dtos/role.dto';
 import { ProjectAuthEvaluator } from './utils/project-auth.evaluator';
 import { ActivitiesService } from '@modules/activities/activities.service';
+import { ACTIVITY_EVENTS } from '@modules/activities/constants/activity-events';
+import { ActivityLoggedEvent } from '@modules/activities/events/activity-logged.event';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { NotificationsService } from '@modules/notifications/notifications.service';
 import { NotificationType } from '@modules/notifications/enums/notification-type.enum';
 import { Task } from '@modules/tasks/entities/task.entity';
@@ -192,6 +195,7 @@ export class ProjectsService {
     private configService: ConfigService,
     private activitiesService: ActivitiesService,
     private readonly notificationsService: NotificationsService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   private async createProjectNotification(notification: {
@@ -303,13 +307,17 @@ export class ProjectsService {
       },
     );
 
-    // Log activity OUTSIDE the transaction to avoid cross-connection deadlocks
-    await this.activitiesService.logActivity(
-      userId,
-      projectDto.projectId,
-      `created project: ${projectDto.projectName}`,
-      'project',
-      projectDto.projectId,
+    // Log activity asynchronously via event
+    this.eventEmitter.emit(
+      ACTIVITY_EVENTS.LOGGED,
+      new ActivityLoggedEvent(
+        userId,
+        projectDto.projectId,
+        `created project: ${projectDto.projectName}`,
+        'project',
+        projectDto.projectId,
+        projectDto.projectName,
+      ),
     );
 
     return projectDto.dto;
@@ -411,12 +419,16 @@ export class ProjectsService {
 
     const savedProject = await this.projectRepo.save(project);
     if (userId) {
-      await this.activitiesService.logActivity(
-        userId,
-        savedProject.id,
-        `updated project settings: ${savedProject.name}`,
-        'project',
-        savedProject.id,
+      this.eventEmitter.emit(
+        ACTIVITY_EVENTS.LOGGED,
+        new ActivityLoggedEvent(
+          userId,
+          savedProject.id,
+          `updated project settings: ${savedProject.name}`,
+          'project',
+          savedProject.id,
+          savedProject.name,
+        ),
       );
     }
 
@@ -698,12 +710,16 @@ export class ProjectsService {
       );
     }
 
-    await this.activitiesService.logActivity(
-      userId,
-      invite.project.id,
-      `joined project: ${invite.project.name}`,
-      'project',
-      invite.project.id,
+    this.eventEmitter.emit(
+      ACTIVITY_EVENTS.LOGGED,
+      new ActivityLoggedEvent(
+        userId,
+        invite.project.id,
+        `joined project: ${invite.project.name}`,
+        'project',
+        invite.project.id,
+        invite.project.name,
+      ),
     );
 
     return this.toMemberView(hydratedMember);

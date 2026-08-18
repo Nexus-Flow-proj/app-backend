@@ -29,6 +29,9 @@ import {
 import { SubmitOnboardingDto } from './dtos/submit-onboarding.dto';
 import { DEFAULT_ROLE_PRESETS } from './projects.service';
 import { ActivitiesService } from '@modules/activities/activities.service';
+import { ACTIVITY_EVENTS } from '@modules/activities/constants/activity-events';
+import { ActivityLoggedEvent } from '@modules/activities/events/activity-logged.event';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 @Injectable()
 export class OnboardingService {
@@ -39,6 +42,7 @@ export class OnboardingService {
     private readonly userRepo: Repository<User>,
     private readonly dataSource: DataSource,
     private readonly activitiesService: ActivitiesService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   async saveDraft(
@@ -337,13 +341,17 @@ export class OnboardingService {
       };
     });
 
-    // 7. Log project creation activity
-    await this.activitiesService.logActivity(
-      userId,
-      result.projectId,
-      `created project via onboarding: ${result.projectName}`,
-      'project',
-      result.projectId,
+    // 7. Log project creation activity asynchronously via event
+    this.eventEmitter.emit(
+      ACTIVITY_EVENTS.LOGGED,
+      new ActivityLoggedEvent(
+        userId,
+        result.projectId,
+        `created project via onboarding: ${result.projectName}`,
+        'project',
+        result.projectId,
+        result.projectName,
+      ),
     );
 
     return result;

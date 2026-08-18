@@ -13,6 +13,8 @@ import { SubTask } from './entities/subtask.entity';
 import { TaskComment } from './entities/task-comment.entity';
 import { TimeLog } from './entities/time-log.entity';
 import { ActivitiesService } from '@modules/activities/activities.service';
+import { ACTIVITY_EVENTS } from '@modules/activities/constants/activity-events';
+import { ActivityLoggedEvent } from '@modules/activities/events/activity-logged.event';
 import { StorageService } from '@shared/providers/storage/storage.service';
 import { TaskStatus } from './enums/task-status.enum';
 import { Project } from '@modules/projects/entities/project.entity';
@@ -426,8 +428,9 @@ export class TasksService {
         }),
       );
     }
-    sideEffects.push(
-      this.activitiesService.logActivity(
+    this.eventEmitter.emit(
+      ACTIVITY_EVENTS.LOGGED,
+      new ActivityLoggedEvent(
         userId,
         projectId,
         `created task: ${savedTask.title}`,
@@ -825,8 +828,9 @@ export class TasksService {
     message = `${action} task: ${savedTask.title}`;
   }
 
-  sideEffects.push(
-    this.activitiesService.logActivity(
+  this.eventEmitter.emit(
+    ACTIVITY_EVENTS.LOGGED,
+    new ActivityLoggedEvent(
       currentUser.id,
       savedTask.project.id,
       message,
@@ -858,17 +862,17 @@ export class TasksService {
     });
     if (!task) throw new NotFoundException('Task not found');
 
-    // Delete and log activity in parallel — activity references title, not the DB row
-    await Promise.all([
-      this.taskRepo.delete({ id: taskId }),
-      this.activitiesService.logActivity(
+    await this.taskRepo.delete({ id: taskId });
+    this.eventEmitter.emit(
+      ACTIVITY_EVENTS.LOGGED,
+      new ActivityLoggedEvent(
         userId,
         task.project.id,
         `deleted task: ${task.title}`,
         'task',
         taskId,
       ),
-    ]);
+    );
 
     const payload: TaskDeletedPayload = {
       projectId: task.project.id,
@@ -1029,8 +1033,9 @@ export class TasksService {
         }),
       );
     }
-    sideEffects.push(
-      this.activitiesService.logActivity(
+    this.eventEmitter.emit(
+      ACTIVITY_EVENTS.LOGGED,
+      new ActivityLoggedEvent(
         userId,
         task.project.id,
         `added a comment on: ${task.title}`,
@@ -1264,15 +1269,15 @@ export class TasksService {
 
     const updatedTask = await this.taskRepo.save(task);
 
-    // Fire-and-forget activity logging — non-critical side-effect
-    this.activitiesService.logActivity(
-      userId,
-      task.project.id,
-      `added ${newAttachments.length} attachment(s) to task: ${task.title}`,
-      'task',
-      task.id,
-    ).catch((err) =>
-      this.logger.error('Failed to log attachment upload activity', err),
+    this.eventEmitter.emit(
+      ACTIVITY_EVENTS.LOGGED,
+      new ActivityLoggedEvent(
+        userId,
+        task.project.id,
+        `added ${newAttachments.length} attachment(s) to task: ${task.title}`,
+        'task',
+        task.id,
+      ),
     );
 
     // Realtime event
@@ -1345,15 +1350,15 @@ export class TasksService {
     task.attachments = attachments;
     const updatedTask = await this.taskRepo.save(task);
 
-    // Fire-and-forget activity logging — non-critical side-effect
-    this.activitiesService.logActivity(
-      userId,
-      task.project.id,
-      `deleted attachment "${targetAttachment.fileName}" from task: ${task.title}`,
-      'task',
-      task.id,
-    ).catch((err) =>
-      this.logger.error('Failed to log attachment delete activity', err),
+    this.eventEmitter.emit(
+      ACTIVITY_EVENTS.LOGGED,
+      new ActivityLoggedEvent(
+        userId,
+        task.project.id,
+        `deleted attachment "${targetAttachment.fileName}" from task: ${task.title}`,
+        'task',
+        task.id,
+      ),
     );
 
     // Realtime event

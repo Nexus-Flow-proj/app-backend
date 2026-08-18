@@ -13,6 +13,8 @@ import { UpdateBoardColumnDto } from './dtos/update-board-column.dto';
 import { ReorderBoardColumnsDto } from './dtos/reorder-board-columns.dto';
 import { BoardColumnResponseDto } from './dtos/board-column-response.dto';
 import { ActivitiesService } from '@modules/activities/activities.service';
+import { ACTIVITY_EVENTS } from '@modules/activities/constants/activity-events';
+import { ActivityLoggedEvent } from '@modules/activities/events/activity-logged.event';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DOMAIN_EVENTS } from '@modules/realtime/constants/domain-events';
 import { ColumnCreatedEvent } from '@modules/realtime/domain-events/column-created.event';
@@ -122,12 +124,15 @@ export class BoardsService {
     });
 
     const saved = await this.boardRepo.save(column);
-    await this.activitiesService.logActivity(
-      userId,
-      projectId,
-      `created board column: ${saved.name}`,
-      'board',
-      saved.id,
+    this.eventEmitter.emit(
+      ACTIVITY_EVENTS.LOGGED,
+      new ActivityLoggedEvent(
+        userId,
+        projectId,
+        `created board column: ${saved.name}`,
+        'board',
+        saved.id,
+      ),
     );
     const payload: ColumnCreatedPayload = {
       projectId,
@@ -163,12 +168,15 @@ export class BoardsService {
 
     Object.assign(column, dto);
     const saved = await this.boardRepo.save(column);
-    await this.activitiesService.logActivity(
-      userId,
-      column.project.id,
-      `updated board column: ${saved.name}`,
-      'board',
-      saved.id,
+    this.eventEmitter.emit(
+      ACTIVITY_EVENTS.LOGGED,
+      new ActivityLoggedEvent(
+        userId,
+        column.project.id,
+        `updated board column: ${saved.name}`,
+        'board',
+        saved.id,
+      ),
     );
     const payload: ColumnUpdatedPayload = {
       projectId: column.project.id,
@@ -197,12 +205,15 @@ export class BoardsService {
     }
 
     await this.boardRepo.delete({ id: columnId });
-    await this.activitiesService.logActivity(
-      userId,
-      column.project.id,
-      `deleted board column: ${column.name}`,
-      'board',
-      columnId,
+    this.eventEmitter.emit(
+      ACTIVITY_EVENTS.LOGGED,
+      new ActivityLoggedEvent(
+        userId,
+        column.project.id,
+        `deleted board column: ${column.name}`,
+        'board',
+        columnId,
+      ),
     );
     const payload: ColumnDeletedPayload = {
       projectId: column.project.id,
@@ -266,12 +277,15 @@ export class BoardsService {
       columns.sort((a, b) => a.sortOrder - b.sortOrder);
 
       // 4. Fire activity & realtime events post-commit
-      await this.activitiesService.logActivity(
-        userId,
-        projectId,
-        'reordered board columns',
-        'board',
-        projectId,
+      this.eventEmitter.emit(
+        ACTIVITY_EVENTS.LOGGED,
+        new ActivityLoggedEvent(
+          userId,
+          projectId,
+          'reordered board columns',
+          'board',
+          projectId,
+        ),
       );
       const payload: ColumnReorderedPayload = {
         projectId,
