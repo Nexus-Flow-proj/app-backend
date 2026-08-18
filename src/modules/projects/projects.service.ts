@@ -529,14 +529,14 @@ export class ProjectsService {
       await this.createProjectNotification({
         recipientId: invitedUser.id,
         actorId: actor.user.id,
-        type: NotificationType.INVITE_RECEIVED,
+        type: NotificationType.INVITATION_RECEIVED,
         title: `You're invited to ${savedInvite.project.name}`,
         message: `${inviterName || 'A project member'} invited ${inviteeName || normalizedEmail} to ${savedInvite.project.name}`,
         projectId: savedInvite.project.id,
         resourceType: 'INVITATION',
         resourceId: savedInvite.id,
         inviteToken: token,
-        logMessage: `Failed to create INVITE_RECEIVED notification for inviteId=${savedInvite.id}, recipientId=${invitedUser.id}`,
+        logMessage: `Failed to create INVITATION_RECEIVED notification for inviteId=${savedInvite.id}, recipientId=${invitedUser.id}`,
       });
     }
 

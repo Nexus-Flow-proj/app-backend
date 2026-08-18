@@ -52,7 +52,7 @@ function buildMetadata(
         metadata.invitationId = notification.resourceId;
       }
       if (
-        notification.type === NotificationType.INVITE_RECEIVED &&
+        notification.type === NotificationType.INVITATION_RECEIVED &&
         notification.inviteToken
       ) {
         metadata.inviteToken = notification.inviteToken;
