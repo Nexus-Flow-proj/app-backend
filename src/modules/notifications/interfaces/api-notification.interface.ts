@@ -11,6 +11,7 @@ export interface ApiNotificationMetadata {
   taskId?: string;
   commentId?: string;
   invitationId?: string;
+  inviteToken?: string;
 }
 
 export interface ApiNotification {

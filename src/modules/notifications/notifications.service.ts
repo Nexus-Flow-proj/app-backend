@@ -48,6 +48,7 @@ export class NotificationsService {
       projectId: input.projectId ?? null,
       resourceType: input.resourceType ?? null,
       resourceId: input.resourceId ?? null,
+      inviteToken: input.inviteToken ?? null,
       deduplicationKey: input.deduplicationKey ?? null,
       isRead: false,
       readAt: null,

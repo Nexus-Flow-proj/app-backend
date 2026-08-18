@@ -1,4 +1,5 @@
 import { Notification } from '../entities/notification.entity';
+import { NotificationType } from '../enums/notification-type.enum';
 import {
   ApiNotification,
   ApiNotificationActor,
@@ -49,6 +50,12 @@ function buildMetadata(
     case 'INVITATION':
       if (notification.resourceId) {
         metadata.invitationId = notification.resourceId;
+      }
+      if (
+        notification.type === NotificationType.INVITE_RECEIVED &&
+        notification.inviteToken
+      ) {
+        metadata.inviteToken = notification.inviteToken;
       }
       break;
     default:
