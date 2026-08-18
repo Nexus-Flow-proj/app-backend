@@ -30,7 +30,7 @@ export default registerAs('env', () => ({
     10,
   ),
   csrfTokenCookieMaxAge: parseInt(
-    process.env.CSRF_TOKEN_COOKIE_MAX_AGE || '3600000',
+    process.env.CSRF_TOKEN_COOKIE_MAX_AGE || '604800000',
     10,
   ),
   geminiApiKey: process.env.GEMINI_API_KEY || '',

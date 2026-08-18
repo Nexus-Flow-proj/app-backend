@@ -125,7 +125,6 @@ export class AuthController {
 
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(CsrfGuard)
   @ThrottleKey('global')
   async refresh(
     @Req() req: Request,
@@ -133,7 +132,6 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const cookies = req.cookies as RequestCookies;
-    const csrfToken = cookies.csrf_token;
     const refreshToken = cookies.refresh_token;
     if (!refreshToken) {
       throw new UnauthorizedException('Missing refresh token');
@@ -142,7 +140,7 @@ export class AuthController {
     setAuthCookies(res, tokens, this.getCookieMaxAgeConfig());
     return {
       message: 'Token refreshed successfully.',
-      data: { csrfToken },
+      data: { csrfToken: tokens.csrfToken },
     };
   }
 
