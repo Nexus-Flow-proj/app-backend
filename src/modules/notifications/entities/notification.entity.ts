@@ -31,6 +31,13 @@ export class Notification {
   resourceId!: string | null;
 
   @Column({
+    name: 'invite_token',
+    type: 'varchar',
+    nullable: true,
+  })
+  inviteToken!: string | null;
+
+  @Column({
     name: 'deduplication_key',
     type: 'varchar',
     nullable: true,

@@ -203,6 +203,7 @@ export class ProjectsService {
     projectId: string;
     resourceType: string;
     resourceId: string;
+    inviteToken?: string | null;
     logMessage: string;
   }): Promise<void> {
     const {
@@ -214,6 +215,7 @@ export class ProjectsService {
       projectId,
       resourceType,
       resourceId,
+      inviteToken,
       logMessage,
     } = notification;
 
@@ -231,6 +233,7 @@ export class ProjectsService {
         projectId,
         resourceType,
         resourceId,
+        inviteToken,
       });
     } catch (error) {
       this.logger.error(
@@ -532,6 +535,7 @@ export class ProjectsService {
         projectId: savedInvite.project.id,
         resourceType: 'INVITATION',
         resourceId: savedInvite.id,
+        inviteToken: token,
         logMessage: `Failed to create INVITE_RECEIVED notification for inviteId=${savedInvite.id}, recipientId=${invitedUser.id}`,
       });
     }

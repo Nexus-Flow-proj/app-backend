@@ -23,6 +23,9 @@ export class NotificationMetadataDto {
 
   @Expose()
   invitationId?: string;
+
+  @Expose()
+  inviteToken?: string;
 }
 
 export class NotificationResponseDto {
