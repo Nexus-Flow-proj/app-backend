@@ -223,7 +223,6 @@ export class AuthService {
     await this.dataSource.transaction(async (manager) => {
       const storedToken = await manager.findOne(PasswordResetToken, {
         where: { tokenHash },
-        relations: { user: true },
         lock: { mode: 'pessimistic_write' },
       });
 
