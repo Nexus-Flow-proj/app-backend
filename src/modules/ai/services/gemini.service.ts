@@ -55,14 +55,6 @@ export class GeminiService {
     return GeminiService.DEFAULT_MODEL;
   }
 
-  /**
-   * Streams generation content using OpenRouter API (if configured), direct Gemini API,
-   * or falls back to simulated stream in mock mode if API fails.
-   */
-  /**
-   * Streams generation content using OpenRouter API (if configured), direct Gemini API,
-   * or falls back to simulated stream in mock mode if API fails.
-   */
   async generateContentStream(
     systemInstruction: string,
     prompt: string,
@@ -73,7 +65,6 @@ export class GeminiService {
       return this.runMockStream(prompt, onChunk);
     }
 
-    // 1. Prefer OpenRouter API if OPENROUTER_API_KEY is configured
     if (this.openrouterApiKey) {
       try {
         return await this.generateOpenRouterStream(
@@ -92,7 +83,6 @@ export class GeminiService {
       }
     }
 
-    // 2. Direct Google Gemini API fallback
     const maxRetries = 2;
     let baseDelayMs = 2000;
 
@@ -152,9 +142,6 @@ export class GeminiService {
     return this.runMockStream(prompt, onChunk);
   }
 
-  /**
-   * Stream completions using OpenRouter OpenAI-compatible API
-   */
   private async generateOpenRouterStream(
     systemInstruction: string,
     prompt: string,
@@ -228,7 +215,6 @@ export class GeminiService {
               onChunk(content);
             }
           } catch {
-            // Ignore incomplete SSE chunk JSON parse errors
           }
         }
       }
@@ -237,10 +223,6 @@ export class GeminiService {
     return this.cleanAndParseJson(completeText);
   }
 
-  /**
-   * Cleans potential Markdown code-block wrappers (```json ... ```) before parsing JSON.
-   * Attempts auto-repair if LLM output was truncated mid-stream.
-   */
   private cleanAndParseJson(rawText: string): Record<string, any> {
     let cleaned = rawText.trim();
     cleaned = cleaned
@@ -267,7 +249,6 @@ export class GeminiService {
     let str = jsonStr.trim();
     if (!str.startsWith('{') && !str.startsWith('[')) return null;
 
-    // Check for unbalanced quotes (unterminated string)
     let inString = false;
     let escape = false;
     for (let i = 0; i < str.length; i++) {
@@ -289,10 +270,8 @@ export class GeminiService {
       str += '"';
     }
 
-    // Remove dangling trailing comma or key prefix at the end
     str = str.replace(/,\s*$/, '').replace(/,\s*"[^"]*"?\s*:?\s*$/, '');
 
-    // Track open brackets/braces to close them
     const stack: string[] = [];
     inString = false;
     escape = false;
@@ -338,7 +317,6 @@ export class GeminiService {
   ): Promise<Record<string, any>> {
     this.logger.log('Executing mock stream generation for prompt...');
 
-    // Simulate latency with chunk intervals
     const isChat = prompt.includes('suggest');
     const mockJson = isChat
       ? this.getMockBoardChatSuggestions()

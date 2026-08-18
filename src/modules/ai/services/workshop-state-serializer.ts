@@ -46,7 +46,6 @@ export class WorkshopStateSerializer {
       };
     });
 
-    // Unassigned task cards (not associated with any feature frame)
     const unassignedTasks = taskCards
       .filter((task) => {
         const taskData = (task.data ?? {}) as Record<string, any>;

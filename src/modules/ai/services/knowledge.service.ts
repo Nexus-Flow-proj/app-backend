@@ -22,9 +22,6 @@ export class KnowledgeService {
     private readonly embeddingService: EmbeddingService,
   ) {}
 
-  /**
-   * Adds a new knowledge chunk to a project and generates its vector embedding.
-   */
   async createKnowledge(
     projectId: string,
     dto: CreateKnowledgeDto,
@@ -49,14 +46,10 @@ export class KnowledgeService {
       `Saved knowledge chunk "${saved.title}" (ID: ${saved.id}) for project ${projectId}`,
     );
 
-    // Return chunk without raw embedding vector
     const { embedding: _, ...result } = saved;
     return result as KnowledgeChunk;
   }
 
-  /**
-   * Retrieves all knowledge chunks for a project.
-   */
   async listKnowledge(
     projectId: string,
     sourceType?: string,
@@ -74,9 +67,6 @@ export class KnowledgeService {
     return query.getMany();
   }
 
-  /**
-   * Retrieves a single knowledge chunk by ID within a project.
-   */
   async getKnowledgeById(
     projectId: string,
     chunkId: string,
@@ -93,9 +83,6 @@ export class KnowledgeService {
     return chunk;
   }
 
-  /**
-   * Updates an existing knowledge chunk and regenerates its embedding if the content changed.
-   */
   async updateKnowledge(
     projectId: string,
     chunkId: string,
@@ -141,9 +128,6 @@ export class KnowledgeService {
     return result as KnowledgeChunk;
   }
 
-  /**
-   * Deletes a knowledge chunk.
-   */
   async deleteKnowledge(projectId: string, chunkId: string): Promise<void> {
     const chunk = await this.chunkRepo.findOne({
       where: { id: chunkId, projectId },
@@ -159,11 +143,6 @@ export class KnowledgeService {
     );
   }
 
-  /**
-   * RAG Vector Similarity Search:
-   * Embeds the incoming query and retrieves the top-N most semantically relevant knowledge chunks
-   * belonging strictly to the requested project.
-   */
   async searchRelevantKnowledge(
     projectId: string,
     queryText: string,
@@ -175,47 +154,51 @@ export class KnowledgeService {
     }
 
     try {
-      // 1. Fetch project chunks including embeddings
-      const chunks = await this.chunkRepo
-        .createQueryBuilder('chunk')
-        .addSelect('chunk.embedding')
-        .where('chunk.projectId = :projectId', { projectId })
-        .getMany();
-
-      if (!chunks || chunks.length === 0) {
-        return [];
-      }
-
-      // 2. Generate embedding for the search query
       const queryEmbedding = await this.embeddingService.createEmbedding(
         queryText.trim(),
         'search_query',
       );
 
-      // 3. Compute cosine similarity for each chunk
-      const scoredResults: KnowledgeSearchResult[] = [];
-
-      for (const chunk of chunks) {
-        const similarity = this.embeddingService.calculateCosineSimilarity(
-          queryEmbedding,
-          chunk.embedding || [],
-        );
-
-        if (similarity >= minSimilarity) {
-          scoredResults.push({
-            id: chunk.id,
-            projectId: chunk.projectId,
-            title: chunk.title,
-            content: chunk.content,
-            sourceType: chunk.sourceType,
-            similarity: Math.round(similarity * 1000) / 1000,
-          });
-        }
+      if (!queryEmbedding || queryEmbedding.length === 0) {
+        return [];
       }
 
-      // 4. Sort descending by similarity and take top N
-      scoredResults.sort((a, b) => b.similarity - a.similarity);
-      return scoredResults.slice(0, limit);
+      const vectorLiteral = `[${queryEmbedding.join(',')}]`;
+      const minDistance = 1 - minSimilarity;
+
+      const rows: Array<{
+        id: string;
+        project_id: string;
+        title: string;
+        content: string;
+        source_type: string;
+        similarity: number;
+      }> = await this.chunkRepo.query(
+        `
+        SELECT
+          id,
+          project_id,
+          title,
+          content,
+          source_type,
+          ROUND(CAST(1 - (embedding <=> $1::vector) AS numeric), 3) AS similarity
+        FROM knowledge_chunks
+        WHERE project_id = $2
+          AND (embedding <=> $1::vector) <= $3
+        ORDER BY embedding <=> $1::vector
+        LIMIT $4
+        `,
+        [vectorLiteral, projectId, minDistance, limit],
+      );
+
+      return rows.map((row) => ({
+        id: row.id,
+        projectId: row.project_id,
+        title: row.title,
+        content: row.content,
+        sourceType: row.source_type,
+        similarity: Number(row.similarity),
+      }));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(

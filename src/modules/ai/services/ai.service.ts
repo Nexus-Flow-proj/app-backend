@@ -30,6 +30,61 @@ import { ProjectMember } from '@modules/projects/entities/project-member.entity'
 import { TaskStatus } from '@modules/tasks/enums/task-status.enum';
 import { KnowledgeService } from './knowledge.service';
 
+class ProgressTracker {
+  private buffer = '';
+  private readonly emittedMilestones = new Set<string>();
+  private latestMilestone: { message: string; percent: number } | null = null;
+
+  private static readonly FEATURE_RE = /"feature_name"\s*:\s*"([^"]+)"/g;
+  private static readonly TASK_RE = /"task_name"\s*:\s*"([^"]+)"/g;
+
+  addChunk(chunk: string): void {
+    this.buffer += chunk;
+    this.scanForMilestones();
+  }
+
+  getLatestMilestone(): { message: string; percent: number } | null {
+    const m = this.latestMilestone;
+    this.latestMilestone = null;
+    return m;
+  }
+
+  private scanForMilestones(): void {
+    const featureRe = new RegExp(ProgressTracker.FEATURE_RE.source, 'g');
+    let match: RegExpExecArray | null;
+    while ((match = featureRe.exec(this.buffer)) !== null) {
+      const featureName = match[1];
+      const key = `feature:${featureName}`;
+      if (!this.emittedMilestones.has(key)) {
+        this.emittedMilestones.add(key);
+        const featureCount = this.emittedMilestones.size;
+        this.latestMilestone = {
+          message: `Planning feature: ${featureName}...`,
+          percent: Math.min(10 + featureCount * 15, 80),
+        };
+      }
+    }
+
+    const taskRe = new RegExp(ProgressTracker.TASK_RE.source, 'g');
+    while ((match = taskRe.exec(this.buffer)) !== null) {
+      const taskName = match[1];
+      const key = `task:${taskName}`;
+      if (!this.emittedMilestones.has(key)) {
+        this.emittedMilestones.add(key);
+        const taskCount = [...this.emittedMilestones].filter((k) =>
+          k.startsWith('task:'),
+        ).length;
+        if (taskCount % 3 === 1) {
+          this.latestMilestone = {
+            message: `Generating tasks... (${taskCount} planned so far)`,
+            percent: Math.min(80 + taskCount, 95),
+          };
+        }
+      }
+    }
+  }
+}
+
 @Injectable()
 export class AIService {
   private readonly logger = new Logger(AIService.name);
@@ -89,7 +144,6 @@ export class AIService {
       );
     }
 
-    // 1. Create a pending job record
     const job = this.jobRepo.create({
       requestedBy: userId,
       prompt: dto.prompt,
@@ -105,13 +159,11 @@ export class AIService {
     const savedJob = await this.jobRepo.save(job);
     const generationId = savedJob.id;
 
-    // Emit created event
     this.realtimeService.emitToUser(userId, 'ai.generation.created', {
       generationId,
       status: AIGenerationStatus.PENDING,
     });
 
-    // 2. Run generation asynchronously
     this.runOnboardingPlanGeneration(userId, generationId, dto).catch((err) => {
       this.logger.error(
         `Onboarding plan generation failed: ${generationId}`,
@@ -294,11 +346,6 @@ Task Context:
     return result as GeneratedDescriptionResponse;
   }
 
-  // src/modules/ai/ai.service.ts
-
-  /**
-   * 4. Project Overview AI Summary (State of the Project, Member Workloads & Remaining Tasks)
-   */
   async getProjectOverviewSummary(
     projectId: string,
     onChunk: (chunk: string) => void = () => {},
@@ -485,7 +532,6 @@ ${JSON.stringify(context, null, 2)}`;
     });
 
     try {
-      // Load the draft to get canonical project info from DB — single source of truth
       const draft = await this.draftRepo.findOne({
         where: { id: dto.draftId },
       });
@@ -494,7 +540,6 @@ ${JSON.stringify(context, null, 2)}`;
       }
       const projectInfo = draft.projectInfo;
 
-      // Load workshop state directly from DB
       const workshop = await this.workshopRepo.findOne({
         where: { draftId: dto.draftId },
       });
@@ -513,7 +558,6 @@ ${JSON.stringify(context, null, 2)}`;
         );
       }
 
-      // Load persistent chat history for context window (capped to MAX_HISTORY_MESSAGES)
       const chatHistory = await this.messageRepo.find({
         where: { draftId: dto.draftId },
         order: { createdAt: 'DESC' },
@@ -540,17 +584,29 @@ Conversation History: ${JSON.stringify(formattedHistory)}.`;
 
       const responseSchema = this.geminiService.getOnboardingSchema();
 
-      // Call streaming API
+      const progressTracker = new ProgressTracker();
+      this.realtimeService.emitToUser(userId, 'ai.generation.progress', {
+        generationId,
+        stage: 'generating',
+        progressMessage: 'Analyzing project context and decomposing features...',
+        progressPercent: 5,
+      });
+
       const result = await this.geminiService.generateContentStream(
         systemInstruction,
         prompt,
         responseSchema,
         (chunkText) => {
-          this.realtimeService.emitToUser(userId, 'ai.generation.progress', {
-            generationId,
-            stage: 'generating',
-            chunk: chunkText,
-          });
+          progressTracker.addChunk(chunkText);
+          const milestone = progressTracker.getLatestMilestone();
+          if (milestone) {
+            this.realtimeService.emitToUser(userId, 'ai.generation.progress', {
+              generationId,
+              stage: 'generating',
+              progressMessage: milestone.message,
+              progressPercent: milestone.percent,
+            });
+          }
         },
       );
 
@@ -559,7 +615,6 @@ Conversation History: ${JSON.stringify(formattedHistory)}.`;
         projectInfo,
       );
 
-      // Save user prompt & assistant response in AIChatMessage
       await this.messageRepo.save([
         this.messageRepo.create({
           draftId: dto.draftId,
@@ -575,15 +630,12 @@ Conversation History: ${JSON.stringify(formattedHistory)}.`;
         }),
       ]);
 
-      // Persist AI plan directly into Workshop DB entities with auto-layout.
-      // The frontend reads GET /workshop/:draftId — no coordinate posting needed.
       const workshopSnapshot =
         await this.workshopCanvasService.applyAIPlanToWorkshop(
           dto.draftId,
           normalizedResult,
         );
 
-      // Save completed job
       await this.jobRepo.update(generationId, {
         status: AIGenerationStatus.COMPLETED,
         outputSnapshot: normalizedResult,
@@ -594,8 +646,6 @@ Conversation History: ${JSON.stringify(formattedHistory)}.`;
         generationId,
         status: AIGenerationStatus.COMPLETED,
         output: normalizedResult,
-        // Include the freshly-persisted workshop so the FE can render immediately
-        // without a separate GET request.
         workshop: workshopSnapshot,
       });
     } catch (error) {
@@ -683,15 +733,27 @@ Provide suggestions matching the JSON schema.`;
 
       const responseSchema = this.geminiService.getBoardChatSchema();
 
+      const progressTracker = new ProgressTracker();
+      this.realtimeService.emitToProject(projectId, 'ai.chat.progress', {
+        generationId,
+        progressMessage: 'Analyzing board context and generating suggestions...',
+        progressPercent: 5,
+      });
+
       const result = await this.geminiService.generateContentStream(
         systemInstruction,
         prompt,
         responseSchema,
         (chunkText) => {
-          this.realtimeService.emitToProject(projectId, 'ai.chat.progress', {
-            generationId,
-            chunk: chunkText,
-          });
+          progressTracker.addChunk(chunkText);
+          const milestone = progressTracker.getLatestMilestone();
+          if (milestone) {
+            this.realtimeService.emitToProject(projectId, 'ai.chat.progress', {
+              generationId,
+              progressMessage: milestone.message,
+              progressPercent: milestone.percent,
+            });
+          }
         },
       );
 

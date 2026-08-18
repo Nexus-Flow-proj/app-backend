@@ -7,7 +7,6 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
-  Req,
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '@shared/guards/jwt-auth.guard';
@@ -26,8 +25,6 @@ import {
 @UseGuards(JwtAuthGuard)
 export class AIController {
   constructor(private readonly aiService: AIService) {}
-
-  // --- Onboarding AI (draft-scoped) ---
 
   @Post('projects/onboarding/ai/generate')
   @UseGuards(CsrfGuard)
@@ -66,8 +63,6 @@ export class AIController {
       data,
     };
   }
-
-  // --- Board AI (project-scoped) ---
 
   @Post('projects/:projectId/ai/chat')
   @UseGuards(CsrfGuard, ProjectAuthGuard)
@@ -171,7 +166,6 @@ export class AIController {
   @Get('dashboard/ai/summary')
   async generateDashboardSummary(@CurrentUser() user: User) {
     const data = await this.aiService.getDashboardSummary(user.id);
-    console.log(user.id);
     return {
       message: 'Dashboard summary was generated successfully!',
       data,
