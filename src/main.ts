@@ -26,8 +26,23 @@ async function bootstrap() {
     exposedHeaders: ['x-csrf-token'],
   });
 
-  app.use(json({ limit: '25mb' }));
-  app.use(urlencoded({ extended: true, limit: '25mb' }));
+  app.use(
+    json({
+      limit: '25mb',
+      verify: (req: any, _res, buf) => {
+        req.rawBody = buf;
+      },
+    }),
+  );
+  app.use(
+    urlencoded({
+      extended: true,
+      limit: '25mb',
+      verify: (req: any, _res, buf) => {
+        req.rawBody = buf;
+      },
+    }),
+  );
   app.use(cookieParser());
   app.useGlobalPipes(
     new ValidationPipe({

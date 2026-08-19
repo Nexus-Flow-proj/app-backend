@@ -81,7 +81,9 @@ export class SubscriptionsService {
     dto: CreateCheckoutSessionDto,
   ): Promise<{ checkoutUrl: string; sessionId: string }> {
     if (dto.tier === PlanTier.FREE) {
-      throw new BadRequestException('Cannot create a checkout session for the Free plan.');
+      throw new BadRequestException(
+        'Cannot create a checkout session for the Free plan.',
+      );
     }
 
     const user = await this.userRepo.findOne({ where: { id: userId } });
@@ -98,7 +100,6 @@ export class SubscriptionsService {
 
     const sub = await this.planLimitsService.getUserSubscription(userId);
 
-    // If user is already on this plan with active status
     if (
       sub.plan.tier === dto.tier &&
       (sub.status === SubscriptionStatus.ACTIVE ||
@@ -109,7 +110,6 @@ export class SubscriptionsService {
       );
     }
 
-    // Resolve or create Stripe customer
     let customerId = sub.stripeCustomerId;
     if (!customerId) {
       const customer = await this.stripeService.createCustomer({
@@ -187,9 +187,7 @@ export class SubscriptionsService {
     };
   }
 
-  async cancelSubscription(
-    userId: string,
-  ): Promise<SubscriptionResponseDto> {
+  async cancelSubscription(userId: string): Promise<SubscriptionResponseDto> {
     const sub = await this.planLimitsService.getUserSubscription(userId);
 
     if (!sub.stripeSubscriptionId) {
@@ -218,7 +216,9 @@ export class SubscriptionsService {
   // ─── Stripe Webhook Handlers ────────────────────────────────────────────────
 
   async handleWebhookEvent(event: Stripe.Event): Promise<void> {
-    this.logger.log(`Handling Stripe webhook event: ${event.type} [${event.id}]`);
+    this.logger.log(
+      `Handling Stripe webhook event: ${event.type} [${event.id}]`,
+    );
 
     switch (event.type) {
       case 'checkout.session.completed': {
@@ -254,7 +254,8 @@ export class SubscriptionsService {
   private async handleCheckoutSessionCompleted(
     session: Stripe.Checkout.Session,
   ): Promise<void> {
-    const userId = session.metadata?.userId || (session.client_reference_id as string);
+    const userId =
+      session.metadata?.userId || (session.client_reference_id as string);
     const planTierStr = session.metadata?.planTier as PlanTier;
     const intervalStr = session.metadata?.billingInterval as BillingInterval;
 
@@ -362,14 +363,14 @@ export class SubscriptionsService {
     sub.trialStart = rawSub.trial_start
       ? new Date(rawSub.trial_start * 1000)
       : null;
-    sub.trialEnd = rawSub.trial_end
-      ? new Date(rawSub.trial_end * 1000)
-      : null;
+    sub.trialEnd = rawSub.trial_end ? new Date(rawSub.trial_end * 1000) : null;
     sub.cancelAtPeriodEnd = rawSub.cancel_at_period_end || false;
 
     await this.subscriptionRepo.save(sub);
     this.planLimitsService.invalidateCache(sub.userId);
-    this.logger.log(`Subscription for user ${sub.userId} updated to ${sub.status}`);
+    this.logger.log(
+      `Subscription for user ${sub.userId} updated to ${sub.status}`,
+    );
   }
 
   private async handleCustomerSubscriptionDeleted(
@@ -402,7 +403,9 @@ export class SubscriptionsService {
 
     await this.subscriptionRepo.save(sub);
     this.planLimitsService.invalidateCache(sub.userId);
-    this.logger.log(`Subscription for user ${sub.userId} cancelled. Downgraded to Free.`);
+    this.logger.log(
+      `Subscription for user ${sub.userId} cancelled. Downgraded to Free.`,
+    );
   }
 
   private async handleInvoicePaymentSucceeded(
@@ -484,7 +487,9 @@ export class SubscriptionsService {
    */
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
   async resetMonthlyAIUsageCron(): Promise<void> {
-    this.logger.log('Running daily cron: Checking subscriptions for monthly AI quota reset...');
+    this.logger.log(
+      'Running daily cron: Checking subscriptions for monthly AI quota reset...',
+    );
 
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
@@ -502,7 +507,9 @@ export class SubscriptionsService {
       .execute();
 
     if (result.affected && result.affected > 0) {
-      this.logger.log(`Reset AI usage quotas for ${result.affected} subscriptions.`);
+      this.logger.log(
+        `Reset AI usage quotas for ${result.affected} subscriptions.`,
+      );
     }
   }
 
