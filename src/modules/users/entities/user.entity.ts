@@ -17,25 +17,25 @@ export class User {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ unique: true })
+  @Column({ type: 'varchar', unique: true })
   email!: string;
 
-  @Column({ name: 'first_name' })
+  @Column({ name: 'first_name', type: 'varchar' })
   firstName!: string;
 
-  @Column({ name: 'last_name' })
+  @Column({ name: 'last_name', type: 'varchar' })
   lastName!: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   title!: string | null;
 
   @Column({ type: 'text', nullable: true })
   bio!: string | null;
 
-  @Column({ name: 'avatar_url', nullable: true })
+  @Column({ name: 'avatar_url', type: 'varchar', nullable: true })
   avatarUrl!: string | null;
 
-  @Column({ name: 'password_hash', nullable: true, select: false })
+  @Column({ name: 'password_hash', type: 'varchar', nullable: true, select: false })
   passwordHash!: string | null;
 
   @OneToMany(() => RefreshToken, (rt) => rt.user)
