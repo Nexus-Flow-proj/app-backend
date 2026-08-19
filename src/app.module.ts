@@ -9,6 +9,7 @@ import jwtConfig from './config/jwt.config';
 import mailConfig from 'config/mail.config';
 import throttlerConfig from 'config/throttler.config';
 import googleConfig from './config/google.config';
+import stripeConfig from './config/stripe.config';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigurableThrottlerGuard } from '@shared/guards/configurable-throttler.guard';
@@ -22,6 +23,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { AIModule } from './modules/ai/ai.module';
+import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { StorageModule } from '@shared/providers/storage/storage.module';
 import { ScheduleModule } from '@nestjs/schedule';
 
@@ -35,6 +37,7 @@ import { ScheduleModule } from '@nestjs/schedule';
         mailConfig,
         throttlerConfig,
         googleConfig,
+        stripeConfig,
       ],
       isGlobal: true,
     }),
@@ -69,6 +72,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     ActivitiesModule,
     DashboardModule,
     AIModule,
+    SubscriptionsModule,
   ],
   providers: [
     ConfigurableThrottlerGuard,

@@ -24,11 +24,15 @@ import {
   UpdateKnowledgeDto,
   SearchKnowledgeDto,
 } from './dtos/knowledge.dto';
+import { PlanLimitsService } from '../subscriptions/services/plan-limits.service';
 
 @Controller('projects/:projectId/knowledge')
 @UseGuards(JwtAuthGuard, ProjectAuthGuard)
 export class KnowledgeController {
-  constructor(private readonly knowledgeService: KnowledgeService) {}
+  constructor(
+    private readonly knowledgeService: KnowledgeService,
+    private readonly planLimitsService: PlanLimitsService,
+  ) {}
 
   @Post()
   @UseGuards(CsrfGuard)
@@ -39,6 +43,8 @@ export class KnowledgeController {
     @Body() dto: CreateKnowledgeDto,
     @CurrentUser() user: User,
   ) {
+    await this.planLimitsService.assertCanUseKnowledge(projectId);
+
     const data = await this.knowledgeService.createKnowledge(
       projectId,
       dto,
@@ -56,6 +62,8 @@ export class KnowledgeController {
     @Param('projectId', ParseUUIDPipe) projectId: string,
     @Query('sourceType') sourceType?: string,
   ) {
+    await this.planLimitsService.assertCanUseKnowledge(projectId);
+
     const data = await this.knowledgeService.listKnowledge(
       projectId,
       sourceType,
@@ -73,6 +81,8 @@ export class KnowledgeController {
     @Param('projectId', ParseUUIDPipe) projectId: string,
     @Body() dto: SearchKnowledgeDto,
   ) {
+    await this.planLimitsService.assertCanUseKnowledge(projectId);
+
     const data = await this.knowledgeService.searchRelevantKnowledge(
       projectId,
       dto.query,
@@ -91,6 +101,8 @@ export class KnowledgeController {
     @Param('projectId', ParseUUIDPipe) projectId: string,
     @Param('chunkId', ParseUUIDPipe) chunkId: string,
   ) {
+    await this.planLimitsService.assertCanUseKnowledge(projectId);
+
     const data = await this.knowledgeService.getKnowledgeById(
       projectId,
       chunkId,
@@ -109,6 +121,8 @@ export class KnowledgeController {
     @Param('chunkId', ParseUUIDPipe) chunkId: string,
     @Body() dto: UpdateKnowledgeDto,
   ) {
+    await this.planLimitsService.assertCanUseKnowledge(projectId);
+
     const data = await this.knowledgeService.updateKnowledge(
       projectId,
       chunkId,
@@ -128,6 +142,8 @@ export class KnowledgeController {
     @Param('projectId', ParseUUIDPipe) projectId: string,
     @Param('chunkId', ParseUUIDPipe) chunkId: string,
   ) {
+    await this.planLimitsService.assertCanUseKnowledge(projectId);
+
     await this.knowledgeService.deleteKnowledge(projectId, chunkId);
     return {
       message: 'Project knowledge document deleted successfully.',

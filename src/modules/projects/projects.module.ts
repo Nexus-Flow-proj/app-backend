@@ -22,6 +22,7 @@ import { WorkshopConnection } from '../canvas/entities/workshop-connection.entit
 import { MiniWorkshop } from '../canvas/entities/mini-workshop.entity';
 import { ActivitiesModule } from '@modules/activities/activities.module';
 import { NotificationsModule } from '@modules/notifications/notifications.module';
+import { SubscriptionsModule } from '@modules/subscriptions/subscriptions.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { NotificationsModule } from '@modules/notifications/notifications.module
     MailModule,
     ActivitiesModule,
     NotificationsModule,
+    SubscriptionsModule,
   ],
   providers: [ProjectsService, OnboardingService],
   controllers: [ProjectsController, OnboardingController],

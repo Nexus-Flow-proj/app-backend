@@ -27,6 +27,7 @@ import {
   ColumnDeletedPayload,
   ColumnReorderedPayload,
 } from '@modules/realtime/interfaces/socket-payloads.interface';
+import { PlanLimitsService } from '@modules/subscriptions/services/plan-limits.service';
 
 @Injectable()
 export class BoardsService {
@@ -37,6 +38,7 @@ export class BoardsService {
     private projectRepo: Repository<Project>,
     private activitiesService: ActivitiesService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly planLimitsService: PlanLimitsService,
   ) {}
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
@@ -89,6 +91,8 @@ export class BoardsService {
     dto: CreateBoardColumnDto,
     userId: string,
   ): Promise<BoardColumnResponseDto> {
+    await this.planLimitsService.assertCanCreateBoardColumn(projectId);
+
     const projectExists = await this.projectRepo.countBy({ id: projectId });
     if (!projectExists) {
       throw new NotFoundException('Project not found');

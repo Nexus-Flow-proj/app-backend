@@ -54,6 +54,7 @@ import { SubtaskUpdatedEvent } from '@modules/realtime/domain-events/subtask-upd
 import { SubtaskDeletedEvent } from '@modules/realtime/domain-events/subtask-deleted.event';
 import { NotificationsService } from '@modules/notifications/notifications.service';
 import { NotificationType } from '@modules/notifications/enums/notification-type.enum';
+import { PlanLimitsService } from '@modules/subscriptions/services/plan-limits.service';
 
 export interface TaskDueTomorrow {
   id: string;
@@ -100,6 +101,7 @@ export class TasksService {
     private readonly notificationsService: NotificationsService,
     private readonly eventEmitter: EventEmitter2,
     private readonly storageService: StorageService,
+    private readonly planLimitsService: PlanLimitsService,
   ) {}
 
   async findTasksDueTomorrow(): Promise<TaskDueTomorrow[]> {
@@ -335,6 +337,8 @@ export class TasksService {
     dto: CreateTaskDto,
     userId: string,
   ) {
+    await this.planLimitsService.assertCanCreateTask(projectId);
+
     const {
       assigneeId,
       assignee: assigneeInput,

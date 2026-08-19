@@ -20,11 +20,16 @@ import {
   GenerateOnboardingPlanDto,
   BoardAIChatDto,
 } from './dtos/ai-generation.dto';
+import { PlanLimitsService } from '../subscriptions/services/plan-limits.service';
+import { AIFeature } from '../subscriptions/enums/ai-feature.enum';
 
 @Controller()
 @UseGuards(JwtAuthGuard)
 export class AIController {
-  constructor(private readonly aiService: AIService) {}
+  constructor(
+    private readonly aiService: AIService,
+    private readonly planLimitsService: PlanLimitsService,
+  ) {}
 
   @Post('projects/onboarding/ai/generate')
   @UseGuards(CsrfGuard)
@@ -33,7 +38,20 @@ export class AIController {
     @CurrentUser() user: User,
     @Body() dto: GenerateOnboardingPlanDto,
   ) {
+    await this.planLimitsService.assertCanUseAI(
+      user.id,
+      undefined,
+      AIFeature.ONBOARDING,
+    );
+
     const data = await this.aiService.generateOnboardingPlan(user.id, dto);
+
+    await this.planLimitsService.incrementAIUsage(
+      user.id,
+      undefined,
+      AIFeature.ONBOARDING,
+    );
+
     return {
       message: 'Onboarding AI plan generation initiated successfully.',
       data,
@@ -73,7 +91,20 @@ export class AIController {
     @Param('projectId', ParseUUIDPipe) projectId: string,
     @Body() dto: BoardAIChatDto,
   ) {
+    await this.planLimitsService.assertCanUseAI(
+      user.id,
+      projectId,
+      AIFeature.CHAT,
+    );
+
     const data = await this.aiService.chatOnBoard(user.id, projectId, dto);
+
+    await this.planLimitsService.incrementAIUsage(
+      user.id,
+      projectId,
+      AIFeature.CHAT,
+    );
+
     return {
       message: 'Board AI chat suggestions generation initiated successfully.',
       data,
@@ -111,10 +142,24 @@ export class AIController {
   @UseGuards(ProjectAuthGuard)
   @RequirePermission('tasks', 'update')
   async recommendAssignee(
+    @CurrentUser() user: User,
     @Param('projectId') projectId: string,
     @Param('taskId') taskId: string,
   ) {
+    await this.planLimitsService.assertCanUseAI(
+      user.id,
+      projectId,
+      AIFeature.TASK,
+    );
+
     const data = await this.aiService.recommendTaskAssignee(projectId, taskId);
+
+    await this.planLimitsService.incrementAIUsage(
+      user.id,
+      projectId,
+      AIFeature.TASK,
+    );
+
     return {
       message: 'Task has been matched to the best candidate successfully!',
       data,
@@ -125,10 +170,24 @@ export class AIController {
   @UseGuards(ProjectAuthGuard)
   @RequirePermission('tasks', 'update')
   async breakdownTask(
+    @CurrentUser() user: User,
     @Param('projectId') projectId: string,
     @Param('taskId') taskId: string,
   ) {
+    await this.planLimitsService.assertCanUseAI(
+      user.id,
+      projectId,
+      AIFeature.TASK,
+    );
+
     const data = await this.aiService.breakTasksIntoSubtasks(projectId, taskId);
+
+    await this.planLimitsService.incrementAIUsage(
+      user.id,
+      projectId,
+      AIFeature.TASK,
+    );
+
     return {
       message: 'Task breakdown was successful!',
       data,
@@ -139,13 +198,27 @@ export class AIController {
   @UseGuards(ProjectAuthGuard)
   @RequirePermission('tasks', 'update')
   async generateTaskDescription(
+    @CurrentUser() user: User,
     @Param('projectId') projectId: string,
     @Param('taskId') taskId: string,
   ) {
+    await this.planLimitsService.assertCanUseAI(
+      user.id,
+      projectId,
+      AIFeature.TASK,
+    );
+
     const data = await this.aiService.generateTaskDescription(
       projectId,
       taskId,
     );
+
+    await this.planLimitsService.incrementAIUsage(
+      user.id,
+      projectId,
+      AIFeature.TASK,
+    );
+
     return {
       message: 'Task description was generated successfully!',
       data,
@@ -155,8 +228,24 @@ export class AIController {
   @Get('projects/:projectId/ai/overview-summary')
   @UseGuards(ProjectAuthGuard)
   @RequirePermission('project', 'read')
-  async generateProjectOverview(@Param('projectId') projectId: string) {
+  async generateProjectOverview(
+    @CurrentUser() user: User,
+    @Param('projectId') projectId: string,
+  ) {
+    await this.planLimitsService.assertCanUseAI(
+      user.id,
+      projectId,
+      AIFeature.TASK,
+    );
+
     const data = await this.aiService.getProjectOverviewSummary(projectId);
+
+    await this.planLimitsService.incrementAIUsage(
+      user.id,
+      projectId,
+      AIFeature.TASK,
+    );
+
     return {
       message: 'Project Overview was generated successfully!',
       data,
@@ -165,7 +254,20 @@ export class AIController {
 
   @Get('dashboard/ai/summary')
   async generateDashboardSummary(@CurrentUser() user: User) {
+    await this.planLimitsService.assertCanUseAI(
+      user.id,
+      undefined,
+      AIFeature.TASK,
+    );
+
     const data = await this.aiService.getDashboardSummary(user.id);
+
+    await this.planLimitsService.incrementAIUsage(
+      user.id,
+      undefined,
+      AIFeature.TASK,
+    );
+
     return {
       message: 'Dashboard summary was generated successfully!',
       data,

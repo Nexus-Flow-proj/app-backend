@@ -14,6 +14,7 @@ import { MailModule } from '@shared/providers/mail/mail.module';
 import { GoogleStrategy } from './strategies/google.strategy';
 import { ProjectsModule } from '@modules/projects/projects.module';
 import { UsersModule } from '@modules/users/users.module';
+import { SubscriptionsModule } from '@modules/subscriptions/subscriptions.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { UsersModule } from '@modules/users/users.module';
     PassportModule,
     MailModule,
     UsersModule,
+    SubscriptionsModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

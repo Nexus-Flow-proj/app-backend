@@ -11,6 +11,7 @@ import { SubTask } from '@modules/tasks/entities/subtask.entity';
 import { TaskComment } from '@modules/tasks/entities/task-comment.entity';
 import { TimeLog } from '@modules/tasks/entities/time-log.entity';
 import { ActivitiesModule } from '@modules/activities/activities.module';
+import { SubscriptionsModule } from '@modules/subscriptions/subscriptions.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { ActivitiesModule } from '@modules/activities/activities.module';
       TimeLog,
     ]),
     ActivitiesModule,
+    SubscriptionsModule,
   ],
   providers: [BoardsService],
   controllers: [BoardsController],

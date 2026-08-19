@@ -44,6 +44,7 @@ import { NotificationsService } from '@modules/notifications/notifications.servi
 import { NotificationType } from '@modules/notifications/enums/notification-type.enum';
 import { Task } from '@modules/tasks/entities/task.entity';
 import { TaskStatus } from '@modules/tasks/enums/task-status.enum';
+import { PlanLimitsService } from '@modules/subscriptions/services/plan-limits.service';
 
 export const DEFAULT_ROLE_PRESETS = [
   {
@@ -196,6 +197,7 @@ export class ProjectsService {
     private activitiesService: ActivitiesService,
     private readonly notificationsService: NotificationsService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly planLimitsService: PlanLimitsService,
   ) {}
 
   private async createProjectNotification(notification: {
@@ -248,6 +250,8 @@ export class ProjectsService {
   }
 
   async create(body: CreateProjectDto, userId: string): Promise<ProjectDto> {
+    await this.planLimitsService.assertCanCreateProject(userId);
+
     const owner = await this.userRepo.findOne({ where: { id: userId } });
     if (!owner) {
       throw new UnauthorizedException('User not found');
@@ -466,6 +470,8 @@ export class ProjectsService {
     body: InviteMemberDto,
     actor: ProjectMember,
   ): Promise<{ inviteLink: string }> {
+    await this.planLimitsService.assertCanInviteMember(projectId);
+
     const project = await this.loadProjectOrFail(projectId);
     const normalizedEmail = body.email.trim().toLowerCase();
 
@@ -1200,6 +1206,8 @@ export class ProjectsService {
     dto: CreateProjectRoleDto,
     actor: ProjectMember,
   ): Promise<ProjectRoleResponseDto> {
+    await this.planLimitsService.assertCanCreateCustomRole(projectId);
+
     const project = await this.loadProjectOrFail(projectId);
 
     if (dto.level < 1 || dto.level > 99) {

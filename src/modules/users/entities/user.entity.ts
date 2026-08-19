@@ -1,6 +1,7 @@
 import {
   Column,
   OneToMany,
+  OneToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
   CreateDateColumn,
@@ -11,6 +12,7 @@ import { RefreshToken } from '../../auth/entities/refresh-token.entity';
 import { Invite } from '../../projects/entities/invite.entity';
 import { Project } from '../../projects/entities/project.entity';
 import { ProjectMember } from '../../projects/entities/project-member.entity';
+import { Subscription } from '../../subscriptions/entities/subscription.entity';
 
 @Entity('users')
 export class User {
@@ -67,6 +69,9 @@ export class User {
 
   @OneToMany(() => Project, (project) => project.admin)
   ownedProjects!: Project[];
+
+  @OneToOne(() => Subscription, (sub) => sub.user)
+  subscription!: Subscription;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;

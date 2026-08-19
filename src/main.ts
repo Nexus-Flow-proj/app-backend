@@ -10,7 +10,7 @@ import { ApiExceptionFilter } from '@shared/filters/api-exception.filter';
 import { SocketIoAdapter } from '@shared/adapters/socket-io.adapter';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { rawBody: true });
 
   const configService = app.get(ConfigService);
   const port = configService.get<number>('env.port');

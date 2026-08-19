@@ -21,6 +21,7 @@ import { Cron } from '@nestjs/schedule';
 import { UserResponseDto } from '@modules/users/dtos/user-response.dto';
 import { toUserResponse } from '@modules/users/mappers/user.mapper';
 import { ProjectsService } from '@modules/projects/projects.service';
+import { SubscriptionsService } from '@modules/subscriptions/services/subscriptions.service';
 
 export interface GeneratedTokens {
   accessToken: string;
@@ -56,6 +57,7 @@ export class AuthService {
     private configService: ConfigService,
     private mailService: MailService,
     private projectsService: ProjectsService,
+    private subscriptionsService: SubscriptionsService,
     private dataSource: DataSource,
   ) {}
 
@@ -74,6 +76,12 @@ export class AuthService {
       passwordHash,
     });
     const savedUser = await this.userRepository.save(newUser);
+
+    try {
+      await this.subscriptionsService.createFreeSubscription(savedUser.id);
+    } catch (err: any) {
+      this.logger.warn(`Failed to create free subscription for user ${savedUser.id}: ${err.message}`);
+    }
 
     if (dto.inviteToken) {
       try {
@@ -280,6 +288,12 @@ export class AuthService {
     });
 
     const savedUser = await this.userRepository.save(newUser);
+
+    try {
+      await this.subscriptionsService.createFreeSubscription(savedUser.id);
+    } catch (err: any) {
+      this.logger.warn(`Failed to create free subscription for google user ${savedUser.id}: ${err.message}`);
+    }
 
     return { ok: true, flow, user: savedUser };
   }
