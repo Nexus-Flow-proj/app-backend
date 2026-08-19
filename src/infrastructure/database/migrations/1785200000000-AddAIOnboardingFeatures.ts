@@ -1,12 +1,9 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddAIOnboardingFeatures1785200000000
-  implements MigrationInterface
-{
+export class AddAIOnboardingFeatures1785200000000 implements MigrationInterface {
   name = 'AddAIOnboardingFeatures1785200000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    // 1. Onboarding Drafts Table
     await queryRunner.query(`
       CREATE TABLE "onboarding_drafts" (
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
