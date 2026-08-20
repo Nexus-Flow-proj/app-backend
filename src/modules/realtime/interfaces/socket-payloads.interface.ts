@@ -51,6 +51,7 @@ export interface ApiComment {
 
 export interface PresencePayload {
   userId: string;
+  projectMemberId: string;
 }
 
 export interface NotificationNewPayload {
