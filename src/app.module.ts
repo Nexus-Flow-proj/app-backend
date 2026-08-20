@@ -24,6 +24,7 @@ import { RealtimeModule } from './modules/realtime/realtime.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { AIModule } from './modules/ai/ai.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
+import { ChatModule } from './modules/chat/chat.module';
 import { StorageModule } from '@shared/providers/storage/storage.module';
 import { ScheduleModule } from '@nestjs/schedule';
 
@@ -73,6 +74,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     DashboardModule,
     AIModule,
     SubscriptionsModule,
+    ChatModule,
   ],
   providers: [
     ConfigurableThrottlerGuard,

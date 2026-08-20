@@ -17,14 +17,18 @@ import { SOCKET_ROOMS } from '../constants/socket-rooms';
 import { RealtimeService } from '../services/realtime.service';
 import { ProjectsService } from '@modules/projects/projects.service';
 import { ProjectRoomDto } from '../dtos/project-room.dto';
+import { ChatTypingDto } from '../dtos/chat-typing.dto';
 import { SOCKET_EVENTS } from '../constants/socket-events';
 import { PresenceTrackerService } from '../services/presence-tracker.service';
+
+const TYPING_THROTTLE_MS = 800;
 
 @WebSocketGateway()
 export class RealtimeGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
 {
   private readonly logger = new Logger(RealtimeGateway.name);
+  private readonly lastTypingEmit = new Map<string, number>();
 
   @WebSocketServer()
   private server!: Server;
@@ -78,8 +82,7 @@ export class RealtimeGateway
         userId: trackedUserId,
         projectMemberId,
         wasLastForProject,
-      } =
-        this.presenceTrackerService.removeSocket(client.id, activeProjectId);
+      } = this.presenceTrackerService.removeSocket(client.id, activeProjectId);
 
       if (trackedUserId && projectMemberId && wasLastForProject) {
         this.realtimeService.emitToProject(
@@ -93,7 +96,70 @@ export class RealtimeGateway
     }
 
     authenticatedClient.data.activeProjectId = undefined;
+    this.lastTypingEmit.delete(client.id);
     this.logger.log(`Socket disconnected: socketId=${client.id}`);
+  }
+
+  @SubscribeMessage(SOCKET_EVENTS.CHAT.TYPING)
+  async handleTyping(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody() payload: ChatTypingDto,
+  ) {
+    const user = client.data.user;
+
+    if (!user) {
+      return {
+        success: false,
+        code: 'UNAUTHORIZED',
+        message: 'Socket is not authenticated',
+      };
+    }
+
+    const throttleKey = `${client.id}:${payload.projectId}`;
+    const now = Date.now();
+    const lastEmit = this.lastTypingEmit.get(throttleKey) ?? 0;
+    if (now - lastEmit < TYPING_THROTTLE_MS) {
+      return { success: true };
+    }
+    this.lastTypingEmit.set(throttleKey, now);
+
+    try {
+      const member = await this.projectsService.getProjectMember(
+        payload.projectId,
+        user.id,
+      );
+
+      const memberUser = member.user;
+      const userName = [memberUser.firstName, memberUser.lastName]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+
+      client
+        .to(SOCKET_ROOMS.project(payload.projectId))
+        .emit(SOCKET_EVENTS.CHAT.USER_TYPING, {
+          projectId: payload.projectId,
+          userId: user.id,
+          userName: userName || memberUser.email,
+          avatarUrl: memberUser.avatarUrl ?? null,
+          isTyping: payload.isTyping,
+        });
+
+      return { success: true };
+    } catch (error) {
+      this.logger.warn(
+        `Chat typing broadcast failed: socketId=${client.id}, projectId=${payload.projectId}, reason=${
+          error instanceof Error ? error.message : 'Unknown error'
+        }`,
+      );
+
+      return {
+        success: false,
+        code: 'FORBIDDEN',
+        message:
+          error instanceof Error ? error.message : 'Failed to broadcast typing',
+      };
+    }
   }
 
   @SubscribeMessage(SOCKET_EVENTS.PROJECT.JOIN)
@@ -129,8 +195,10 @@ export class RealtimeGateway
           userId: trackedUserId,
           projectMemberId,
           wasLastForProject,
-        } =
-          this.presenceTrackerService.removeSocket(client.id, previousProjectId);
+        } = this.presenceTrackerService.removeSocket(
+          client.id,
+          previousProjectId,
+        );
 
         if (trackedUserId && projectMemberId && wasLastForProject) {
           this.realtimeService.emitToProject(

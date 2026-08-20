@@ -20,4 +20,14 @@ export const DOMAIN_EVENTS = {
     UPDATED: 'task.updated',
     DELETED: 'task.deleted',
   },
+  CHAT: {
+    MESSAGE_CREATED: 'chat.message.created',
+    MESSAGE_UPDATED: 'chat.message.updated',
+    MESSAGE_DELETED: 'chat.message.deleted',
+    MESSAGE_PINNED: 'chat.message.pinned',
+    MESSAGE_UNPINNED: 'chat.message.unpinned',
+    REACTION_ADDED: 'chat.reaction.added',
+    REACTION_REMOVED: 'chat.reaction.removed',
+    READ: 'chat.read',
+  },
 } as const;
