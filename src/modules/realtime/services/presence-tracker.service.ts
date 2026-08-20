@@ -5,14 +5,17 @@ export class PresenceTrackerService {
   private readonly projectUserSockets = new Map<string, Map<string, Set<string>>>();
   private readonly socketUsers = new Map<string, string>();
   private readonly socketProjects = new Map<string, string>();
+  private readonly socketProjectMembers = new Map<string, string>();
 
   addSocket(
     socketId: string,
     userId: string,
     projectId: string,
+    projectMemberId: string,
   ): { isFirstForProject: boolean } {
     this.socketUsers.set(socketId, userId);
     this.socketProjects.set(socketId, projectId);
+    this.socketProjectMembers.set(socketId, projectMemberId);
 
     let projectMap = this.projectUserSockets.get(projectId);
     if (!projectMap) {
@@ -36,14 +39,20 @@ export class PresenceTrackerService {
   removeSocket(
     socketId: string,
     projectId?: string,
-  ): { userId?: string; wasLastForProject: boolean } {
+  ): {
+    userId?: string;
+    projectMemberId?: string;
+    wasLastForProject: boolean;
+  } {
     const userId = this.socketUsers.get(socketId);
+    const projectMemberId = this.socketProjectMembers.get(socketId);
     const trackedProjectId = projectId ?? this.socketProjects.get(socketId);
 
     if (!userId || !trackedProjectId) {
       this.socketUsers.delete(socketId);
       this.socketProjects.delete(socketId);
-      return { userId, wasLastForProject: false };
+      this.socketProjectMembers.delete(socketId);
+      return { userId, projectMemberId, wasLastForProject: false };
     }
 
     const projectMap = this.projectUserSockets.get(trackedProjectId);
@@ -52,7 +61,8 @@ export class PresenceTrackerService {
     if (!socketSet || !socketSet.has(socketId)) {
       this.socketUsers.delete(socketId);
       this.socketProjects.delete(socketId);
-      return { userId, wasLastForProject: false };
+      this.socketProjectMembers.delete(socketId);
+      return { userId, projectMemberId, wasLastForProject: false };
     }
 
     socketSet.delete(socketId);
@@ -69,8 +79,9 @@ export class PresenceTrackerService {
 
     this.socketUsers.delete(socketId);
     this.socketProjects.delete(socketId);
+    this.socketProjectMembers.delete(socketId);
 
-    return { userId, wasLastForProject };
+    return { userId, projectMemberId, wasLastForProject };
   }
 
   isSocketTrackedInProject(socketId: string, projectId: string): boolean {

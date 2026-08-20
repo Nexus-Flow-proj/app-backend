@@ -74,14 +74,18 @@ export class RealtimeGateway
     const activeProjectId = authenticatedClient.data.activeProjectId;
 
     if (userId && activeProjectId) {
-      const { userId: trackedUserId, wasLastForProject } =
+      const {
+        userId: trackedUserId,
+        projectMemberId,
+        wasLastForProject,
+      } =
         this.presenceTrackerService.removeSocket(client.id, activeProjectId);
 
-      if (trackedUserId && wasLastForProject) {
+      if (trackedUserId && projectMemberId && wasLastForProject) {
         this.realtimeService.emitToProject(
           activeProjectId,
           SOCKET_EVENTS.PRESENCE.USER_OFFLINE,
-          { userId: trackedUserId },
+          { userId: trackedUserId, projectMemberId },
         );
       }
     } else {
@@ -108,7 +112,10 @@ export class RealtimeGateway
         };
       }
 
-      await this.projectsService.getProjectMember(payload.projectId, user.id);
+      const member = await this.projectsService.getProjectMember(
+        payload.projectId,
+        user.id,
+      );
 
       const activeProjectId = client.data.activeProjectId;
       if (activeProjectId === payload.projectId) {
@@ -118,14 +125,18 @@ export class RealtimeGateway
       if (activeProjectId && activeProjectId !== payload.projectId) {
         const previousProjectId = activeProjectId;
         const previousProjectRoom = SOCKET_ROOMS.project(previousProjectId);
-        const { userId: trackedUserId, wasLastForProject } =
+        const {
+          userId: trackedUserId,
+          projectMemberId,
+          wasLastForProject,
+        } =
           this.presenceTrackerService.removeSocket(client.id, previousProjectId);
 
-        if (trackedUserId && wasLastForProject) {
+        if (trackedUserId && projectMemberId && wasLastForProject) {
           this.realtimeService.emitToProject(
             previousProjectId,
             SOCKET_EVENTS.PRESENCE.USER_OFFLINE,
-            { userId: trackedUserId },
+            { userId: trackedUserId, projectMemberId },
           );
         }
 
@@ -140,6 +151,7 @@ export class RealtimeGateway
         client.id,
         user.id,
         payload.projectId,
+        member.id,
       );
       client.data.activeProjectId = payload.projectId;
 
@@ -147,7 +159,7 @@ export class RealtimeGateway
         this.realtimeService.emitToProject(
           payload.projectId,
           SOCKET_EVENTS.PRESENCE.USER_ONLINE,
-          { userId: user.id },
+          { userId: user.id, projectMemberId: member.id },
         );
       }
 
@@ -191,21 +203,19 @@ export class RealtimeGateway
       return { success: true };
     }
 
-    const { userId, wasLastForProject } = this.presenceTrackerService.removeSocket(
-      client.id,
-      payload.projectId,
-    );
+    const { userId, projectMemberId, wasLastForProject } =
+      this.presenceTrackerService.removeSocket(client.id, payload.projectId);
 
     const projectRoom = SOCKET_ROOMS.project(payload.projectId);
     await client.leave(projectRoom);
 
     client.data.activeProjectId = undefined;
 
-    if (userId && wasLastForProject) {
+    if (userId && projectMemberId && wasLastForProject) {
       this.realtimeService.emitToProject(
         payload.projectId,
         SOCKET_EVENTS.PRESENCE.USER_OFFLINE,
-        { userId },
+        { userId, projectMemberId },
       );
     }
 

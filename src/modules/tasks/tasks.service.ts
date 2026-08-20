@@ -736,7 +736,11 @@ export class TasksService {
     }
   }
 
-  if (meaningfulTaskChanged && newAssigneeId) {
+  if (
+    meaningfulTaskChanged &&
+    newAssigneeId &&
+    oldAssigneeId === newAssigneeId
+  ) {
     sideEffects.push(
       this.createTaskNotification({
         taskId: savedTask.id,
@@ -995,11 +999,12 @@ export class TasksService {
     const [task, currentUser] = await Promise.all([
       this.taskRepo.findOne({
         where: { id: taskId },
-        relations: { project: true, assignee: true },
+        relations: { project: true, createdBy: true, assignee: true },
         select: {
           id: true,
           title: true,
           project: { id: true },
+          createdBy: { id: true },
           assignee: { id: true },
         },
       }),
@@ -1021,11 +1026,17 @@ export class TasksService {
 
     // Fire side-effects in parallel — they are independent
     const sideEffects: Promise<void>[] = [];
-    if (task.assignee?.id) {
+    const recipientIds = new Set(
+      [task.createdBy?.id, task.assignee?.id].filter(
+        (recipientId): recipientId is string => Boolean(recipientId),
+      ),
+    );
+
+    for (const recipientId of recipientIds) {
       sideEffects.push(
         this.createTaskNotification({
           taskId: task.id,
-          recipientId: task.assignee.id,
+          recipientId,
           actorId: userId,
           type: NotificationType.COMMENT_ADDED,
           title: 'New comment added',
@@ -1033,7 +1044,7 @@ export class TasksService {
           projectId: task.project.id,
           resourceType: 'COMMENT',
           resourceId: savedComment.id,
-          logMessage: `Failed to create COMMENT_ADDED notification for taskId=${task.id}, recipientId=${task.assignee.id}`,
+          logMessage: `Failed to create COMMENT_ADDED notification for taskId=${task.id}, recipientId=${recipientId}`,
         }),
       );
     }
