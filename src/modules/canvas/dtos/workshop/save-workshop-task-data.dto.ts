@@ -2,6 +2,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsIn,
   Matches,
   MaxLength,
 } from 'class-validator';
@@ -41,4 +42,9 @@ export class SaveWorkshopTaskDataDto {
   @IsString()
   @MaxLength(50)
   priority?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['BACKLOG', 'TODO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE'])
+  status?: string;
 }
