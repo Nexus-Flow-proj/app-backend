@@ -298,15 +298,17 @@ export class WorkshopCanvasService {
     const objectRepo = manager.getRepository(WorkshopObject);
     const connectionRepo = manager.getRepository(WorkshopConnection);
 
+    // Load existing objects early for data merging in PATCH operations
+    const currentObjects = await objectRepo.find({ where: { workshopId } });
+    const currentConnections = await connectionRepo.find({
+      where: { workshopId },
+    });
+
     // Fast path: if payload is empty and workshop has content, clear the canvas
     if (
       (dto.objects?.length === 0 || dto.objects.length === 0) &&
       (dto.connections?.length === 0 || dto.connections.length === 0)
     ) {
-      const currentObjects = await objectRepo.find({ where: { workshopId } });
-      const currentConnections = await connectionRepo.find({
-        where: { workshopId },
-      });
 
       if (currentObjects.length > 0) {
         const objectsToDelete = currentObjects.map((o) => o.id);
@@ -344,8 +346,13 @@ export class WorkshopCanvasService {
       const submittedConnectionIds = new Set(dto.connections.map((c) => c.id));
 
       if (submittedObjectIds.size > 0 || submittedConnectionIds.size > 0) {
+        // Build map of existing object data for merging
+        const existingObjectsMap = new Map(
+          currentObjects.map((o) => [o.id, o.data as Record<string, unknown>]),
+        );
+
         const nextObjects: WorkshopObject[] = dto.objects.map((obj) =>
-          this.toWorkshopObjectEntity(workshopId, obj),
+          this.toWorkshopObjectEntity(workshopId, obj, existingObjectsMap.get(obj.id)),
         );
         await objectRepo.save(nextObjects);
 
@@ -368,11 +375,6 @@ export class WorkshopCanvasService {
     }
 
     // Existing logic for mixed/partial updates
-    const currentObjects = await objectRepo.find({ where: { workshopId } });
-    const currentConnections = await connectionRepo.find({
-      where: { workshopId },
-    });
-
     const submittedObjectIds = new Set(dto.objects.map((o) => o.id));
     const submittedConnectionIds = new Set(dto.connections.map((c) => c.id));
 
@@ -405,8 +407,13 @@ export class WorkshopCanvasService {
     }
 
     // Upsert objects & connections from client payload
+    // Build map of existing object data for merging (preserve fields not sent in PATCH)
+    const existingObjectsMap = new Map(
+      currentObjects.map((o) => [o.id, o.data as Record<string, unknown>]),
+    );
+
     const nextObjects: WorkshopObject[] = dto.objects.map((obj) =>
-      this.toWorkshopObjectEntity(workshopId, obj),
+      this.toWorkshopObjectEntity(workshopId, obj, existingObjectsMap.get(obj.id)),
     );
     await objectRepo.save(nextObjects);
 
@@ -454,6 +461,7 @@ export class WorkshopCanvasService {
   private toWorkshopObjectEntity(
     workshopId: string,
     object: SaveWorkshopCanvasObjectDto,
+    existingData?: Record<string, unknown>,
   ): WorkshopObject {
     const base = {
       id: object.id,
@@ -464,7 +472,7 @@ export class WorkshopCanvasService {
       height: object.height,
       rotation: object.rotation,
       zIndex: object.zIndex,
-      data: null,
+      data: existingData ?? null,
     } as DeepPartial<WorkshopObject>;
 
     if (object.type === 'SECTION_FRAME') {
@@ -474,7 +482,7 @@ export class WorkshopCanvasService {
         data: {
           kind: 'Feature',
           title: data.title,
-          description: data.description ?? undefined,
+          description: data.description ?? (existingData?.data as any)?.description,
           backgroundColor: data.backgroundColor,
           borderColor: data.borderColor,
         },
@@ -483,15 +491,16 @@ export class WorkshopCanvasService {
 
     if (object.type === 'TASK_CARD') {
       const data = object.data as SaveWorkshopTaskDataDto;
+      const existingTaskData = existingData?.data as SaveWorkshopTaskDataDto | undefined;
       return Object.assign(base, {
         type: CanvasObjectType.TASK_CARD,
         data: {
           kind: 'Task',
-          featureId: data.featureId,
-          title: data.title,
-          description: data.description ?? undefined,
-          dueDate: data.dueDate ?? undefined,
-          priority: data.priority ?? 'MEDIUM',
+          featureId: data.featureId ?? (existingTaskData?.featureId),
+          title: data.title ?? (existingTaskData?.title),
+          description: data.description ?? (existingTaskData?.description),
+          dueDate: data.dueDate ?? (existingTaskData?.dueDate),
+          priority: data.priority ?? (existingTaskData?.priority ?? 'MEDIUM'),
         },
       }) as WorkshopObject;
     }
