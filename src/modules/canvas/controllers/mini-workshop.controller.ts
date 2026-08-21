@@ -28,7 +28,7 @@ export class MiniWorkshopController {
       projectId,
       user.id,
     );
-    return { data };
+    return { message: 'Canvas loaded successfully.', data };
   }
 
   @Patch()
@@ -43,6 +43,6 @@ export class MiniWorkshopController {
       user.id,
       dto,
     );
-    return { data };
+    return { message: 'Canvas saved successfully.', data };
   }
 }
