@@ -28,7 +28,7 @@ export class MiniWorkshopController {
       projectId,
       user.id,
     );
-    return { message: 'Mini Workshop loaded successfully.', data };
+    return { data };
   }
 
   @Patch()
@@ -43,6 +43,6 @@ export class MiniWorkshopController {
       user.id,
       dto,
     );
-    return { message: 'Mini Workshop saved successfully.', data };
+    return { data };
   }
 }

@@ -298,6 +298,76 @@ export class WorkshopCanvasService {
     const objectRepo = manager.getRepository(WorkshopObject);
     const connectionRepo = manager.getRepository(WorkshopConnection);
 
+    // Fast path: if payload is empty and workshop has content, clear the canvas
+    if (
+      (dto.objects?.length === 0 || dto.objects.length === 0) &&
+      (dto.connections?.length === 0 || dto.connections.length === 0)
+    ) {
+      const currentObjects = await objectRepo.find({ where: { workshopId } });
+      const currentConnections = await connectionRepo.find({
+        where: { workshopId },
+      });
+
+      if (currentObjects.length > 0) {
+        const objectsToDelete = currentObjects.map((o) => o.id);
+        if (objectsToDelete.length > 0) {
+          await objectRepo.delete({ id: In(objectsToDelete) });
+        }
+      }
+
+      if (currentConnections.length > 0) {
+        await connectionRepo.delete({ workshopId });
+      }
+
+      // Update viewport to defaults
+      const workshop = await workshopRepo.findOneOrFail({
+        where: { id: workshopId },
+      });
+      workshop.viewportX = 24;
+      workshop.viewportY = 24;
+      workshop.viewportZoom = 0.82;
+      await workshopRepo.save(workshop);
+
+      return;
+    }
+
+    // Fast path: if workshop is empty and payload has content, just save
+    const currentObjectsCount = await objectRepo.count({
+      where: { workshopId },
+    });
+    const currentConnectionsCount = await connectionRepo.count({
+      where: { workshopId },
+    });
+
+    if (currentObjectsCount === 0 && currentConnectionsCount === 0) {
+      const submittedObjectIds = new Set(dto.objects.map((o) => o.id));
+      const submittedConnectionIds = new Set(dto.connections.map((c) => c.id));
+
+      if (submittedObjectIds.size > 0 || submittedConnectionIds.size > 0) {
+        const nextObjects: WorkshopObject[] = dto.objects.map((obj) =>
+          this.toWorkshopObjectEntity(workshopId, obj),
+        );
+        await objectRepo.save(nextObjects);
+
+        const nextConnections: WorkshopConnection[] = dto.connections.map((conn) =>
+          this.toWorkshopConnectionEntity(workshopId, conn),
+        );
+        await connectionRepo.save(nextConnections);
+
+        // Update viewport to defaults
+        const workshop = await workshopRepo.findOneOrFail({
+          where: { id: workshopId },
+        });
+        workshop.viewportX = dto.viewport.x;
+        workshop.viewportY = dto.viewport.y;
+        workshop.viewportZoom = dto.viewport.scale;
+        await workshopRepo.save(workshop);
+
+        return;
+      }
+    }
+
+    // Existing logic for mixed/partial updates
     const currentObjects = await objectRepo.find({ where: { workshopId } });
     const currentConnections = await connectionRepo.find({
       where: { workshopId },

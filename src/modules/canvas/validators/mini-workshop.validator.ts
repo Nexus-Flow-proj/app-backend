@@ -12,6 +12,8 @@ import {
   MiniImageDataDto,
 } from '../dtos/mini-workshop/mini-object-data.dto';
 
+const imageBufferCache = new Map<string, Buffer>();
+
 @Injectable()
 export class MiniWorkshopValidator {
   validateDocumentOrThrow(dto: SaveMiniWorkshopDto): void {
@@ -170,8 +172,15 @@ export class MiniWorkshopValidator {
 
       // Decode base64 buffer and validate limits + magic bytes
       const base64Data = matches[2];
-      const buffer = Buffer.from(base64Data, 'base64');
+      const cacheKey = base64Data;
+      const cachedBuffer = imageBufferCache.get(cacheKey);
+      const buffer = cachedBuffer || Buffer.from(base64Data, 'base64');
       const decodedSize = buffer.length;
+
+      // Cache the buffer if not already cached
+      if (!cachedBuffer) {
+        imageBufferCache.set(cacheKey, buffer);
+      }
 
       if (decodedSize > MINI_WORKSHOP_LIMITS.MAX_ASSET_DECODED_BYTES) {
         throw new PayloadTooLargeException(

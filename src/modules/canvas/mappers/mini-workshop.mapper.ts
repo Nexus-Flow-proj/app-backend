@@ -35,7 +35,7 @@ export function createEmptyMiniWorkshopResponse(
     schemaVersion: 2,
     revision: 0,
     scene: {
-      viewport: { x: 40, y: 40, scale: 0.82 },
+      viewport: { x: 24, y: 24, scale: 0.82 },
       objects: [],
       connections: [],
       assets: {},

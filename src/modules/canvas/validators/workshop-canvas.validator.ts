@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  PayloadTooLargeException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { DataSource, In } from 'typeorm';
@@ -12,6 +13,7 @@ import { SaveWorkshopCanvasConnectionDto } from '../dtos/workshop/save-workshop-
 import { SaveWorkshopFeatureDataDto } from '../dtos/workshop/save-workshop-feature-data.dto';
 import { SaveWorkshopTaskDataDto } from '../dtos/workshop/save-workshop-task-data.dto';
 import { SaveWorkshopStickyNoteDataDto } from '../dtos/workshop/save-workshop-sticky-note-data.dto';
+import { MINI_WORKSHOP_LIMITS } from '../constants/mini-workshop.constants';
 
 @Injectable()
 export class WorkshopCanvasValidator {
@@ -28,6 +30,7 @@ export class WorkshopCanvasValidator {
     this.validateViewport(dto.viewport);
     this.validateNoDuplicateIds(objects, connections);
     this.validateTypesAndShapes(objects, connections);
+    this.validateLimits(dto, objects, connections);
 
     this.validateObjectKindsAndPairs(objects);
     this.validateConnectionGraph(objects, connections);
@@ -46,6 +49,23 @@ export class WorkshopCanvasValidator {
     });
 
     this.validateTaskContainment(taskObjects, featureObjects);
+  }
+
+  private validateLimits(
+    dto: SaveWorkshopCanvasDto,
+    objects: SaveWorkshopCanvasObjectDto[],
+    connections: SaveWorkshopCanvasConnectionDto[],
+  ): void {
+    if (objects.length > MINI_WORKSHOP_LIMITS.MAX_OBJECTS) {
+      throw new PayloadTooLargeException(
+        `Objects count exceeds limit of ${MINI_WORKSHOP_LIMITS.MAX_OBJECTS}`,
+      );
+    }
+    if (connections.length > MINI_WORKSHOP_LIMITS.MAX_CONNECTIONS) {
+      throw new PayloadTooLargeException(
+        `Connections count exceeds limit of ${MINI_WORKSHOP_LIMITS.MAX_CONNECTIONS}`,
+      );
+    }
   }
 
   private validateNoDuplicateIds(

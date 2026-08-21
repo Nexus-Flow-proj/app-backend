@@ -30,7 +30,7 @@ export class WorkshopCanvasController {
       draftId,
       user.id,
     );
-    return { message: 'Workshop loaded successfully.', data };
+    return { data };
   }
 
   @Patch()
@@ -45,6 +45,6 @@ export class WorkshopCanvasController {
       user.id,
       dto,
     );
-    return { message: 'Workshop saved successfully.', data };
+    return { data };
   }
 }
