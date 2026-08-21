@@ -250,7 +250,8 @@ export class WorkshopCanvasValidator {
     for (const task of taskObjects) {
       const taskData = task.data as SaveWorkshopTaskDataDto;
       const taskTitle = taskData?.title?.trim() || 'Untitled Task';
-      const feature = featureMap.get(taskData?.featureId);
+      const featureId = taskData?.featureId?.trim();
+      const feature = featureId ? featureMap.get(featureId) : undefined;
       if (!feature) {
         throw new UnprocessableEntityException(
           `Task "${taskTitle}" is not assigned to a valid feature frame. Please place it inside a feature frame.`,

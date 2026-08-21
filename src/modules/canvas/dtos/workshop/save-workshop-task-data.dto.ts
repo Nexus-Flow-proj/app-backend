@@ -12,10 +12,10 @@ export class SaveWorkshopTaskDataDto {
   @MaxLength(255)
   taskId?: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @MaxLength(255)
-  featureId!: string;
+  featureId?: string;
 
   @IsString()
   @IsNotEmpty()
