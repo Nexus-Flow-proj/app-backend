@@ -121,7 +121,6 @@ export class RealtimeGateway
     if (now - lastEmit < TYPING_THROTTLE_MS) {
       return { success: true };
     }
-    this.lastTypingEmit.set(throttleKey, now);
 
     try {
       const member = await this.projectsService.getProjectMember(
@@ -144,6 +143,8 @@ export class RealtimeGateway
           avatarUrl: memberUser.avatarUrl ?? null,
           isTyping: payload.isTyping,
         });
+
+      this.lastTypingEmit.set(throttleKey, now);
 
       return { success: true };
     } catch (error) {
