@@ -98,6 +98,9 @@ function toWorkshopCanvasObjectData(
         priority: String(
           (object.data as { priority?: string } | null)?.priority ?? 'MEDIUM',
         ),
+        status: String(
+          (object.data as { status?: string } | null)?.status ?? 'TODO',
+        ),
       };
     case CanvasObjectType.STICKY_NOTE:
     default:

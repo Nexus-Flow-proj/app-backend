@@ -6,4 +6,5 @@ export class TaskDataDto {
   description?: string;
   dueDate?: string;
   priority?: string;
+  status?: string;
 }
