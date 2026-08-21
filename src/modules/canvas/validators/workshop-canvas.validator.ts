@@ -249,12 +249,16 @@ export class WorkshopCanvasValidator {
 
     for (const task of taskObjects) {
       const taskData = task.data as SaveWorkshopTaskDataDto;
-      const feature = featureMap.get(taskData.featureId);
+      const taskTitle = taskData?.title?.trim() || 'Untitled Task';
+      const feature = featureMap.get(taskData?.featureId);
       if (!feature) {
         throw new UnprocessableEntityException(
-          `Task '${task.id}' references missing feature '${taskData.featureId}'`,
+          `Task "${taskTitle}" is not assigned to a valid feature frame. Please place it inside a feature frame.`,
         );
       }
+
+      const featureData = feature.data as SaveWorkshopFeatureDataDto;
+      const featureTitle = featureData?.title?.trim() || 'Untitled Feature';
 
       const left = feature.x + 24;
       const right = feature.x + feature.width - 24;
@@ -268,7 +272,7 @@ export class WorkshopCanvasValidator {
         task.y + task.height > bottom
       ) {
         throw new UnprocessableEntityException(
-          `Task '${task.id}' must be inside feature '${feature.id}'`,
+          `Task "${taskTitle}" must be placed completely inside the "${featureTitle}" frame.`,
         );
       }
     }
