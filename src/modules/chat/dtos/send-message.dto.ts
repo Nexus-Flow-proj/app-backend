@@ -27,8 +27,9 @@ export class ChatAttachmentRefDto {
   @MaxLength(100)
   fileType!: string;
 
+  @IsOptional()
   @Type(() => Number)
-  fileSize!: number;
+  fileSize?: number;
 
   @IsString()
   @IsNotEmpty()
