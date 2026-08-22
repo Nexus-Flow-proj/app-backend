@@ -63,12 +63,17 @@ export class NotificationsService {
           ? (error.driverError as {
               code?: string;
               constraint?: string;
+              detail?: string;
+              message?: string;
             })
           : undefined;
 
       if (
         driverError?.code === '23505' &&
-        driverError.constraint === 'UQ_notifications_deduplication_key'
+        (Boolean(input.deduplicationKey) ||
+          driverError.constraint?.includes('deduplication_key') ||
+          driverError.constraint === 'UQ_notifications_deduplication_key' ||
+          driverError.detail?.includes('deduplication_key'))
       ) {
         return null;
       }
@@ -102,10 +107,10 @@ export class NotificationsService {
         'notification.actor',
         User,
         'actor',
-        'actor.id = notification.actor_id',
+        'actor.id = notification.actorId',
       )
-      .where('notification.recipient_id = :userId', { userId })
-      .orderBy('notification.created_at', 'DESC')
+      .where('notification.recipientId = :userId', { userId })
+      .orderBy('notification.createdAt', 'DESC')
       .skip(skip)
       .take(safeLimit)
       .getMany();

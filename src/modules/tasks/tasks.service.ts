@@ -129,7 +129,6 @@ export class TasksService {
       .andWhere('task.status != :doneStatus', {
         doneStatus: TaskStatus.DONE,
       })
-      .andWhere('task.assignee_id IS NOT NULL')
       .getRawMany<TaskDueTomorrow>();
   }
 

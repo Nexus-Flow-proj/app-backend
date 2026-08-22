@@ -71,6 +71,15 @@ export function mapNotificationToApiNotification(
   const actor = buildActor(notification.actor);
   const metadata = buildMetadata(notification);
 
+  let createdAt: string;
+  if (notification.createdAt instanceof Date) {
+    createdAt = notification.createdAt.toISOString();
+  } else if (notification.createdAt) {
+    createdAt = new Date(notification.createdAt).toISOString();
+  } else {
+    createdAt = new Date().toISOString();
+  }
+
   return {
     id: notification.id,
     userId: notification.recipientId,
@@ -80,6 +89,6 @@ export function mapNotificationToApiNotification(
     ...(actor ? { actor } : {}),
     ...(metadata ? { metadata } : {}),
     isRead: notification.isRead,
-    createdAt: notification.createdAt.toISOString(),
+    createdAt,
   };
 }
