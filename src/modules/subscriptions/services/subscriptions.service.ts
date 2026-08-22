@@ -4,6 +4,7 @@ import {
   InternalServerErrorException,
   Logger,
   NotFoundException,
+  OnApplicationBootstrap,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -25,9 +26,10 @@ import {
 import { StripeService } from './stripe.service';
 import { PlanLimitsService } from './plan-limits.service';
 import { StripeConfig } from '../../../config/stripe.config';
+import { DEFAULT_PLANS } from '../constants/default-plans.constant';
 
 @Injectable()
-export class SubscriptionsService {
+export class SubscriptionsService implements OnApplicationBootstrap {
   private readonly logger = new Logger(SubscriptionsService.name);
   private readonly stripeConfig: StripeConfig;
 
@@ -47,12 +49,86 @@ export class SubscriptionsService {
     this.stripeConfig = this.configService.get<StripeConfig>('stripe')!;
   }
 
+  async onApplicationBootstrap(): Promise<void> {
+    try {
+      await this.seedDefaultPlans();
+    } catch (err: any) {
+      this.logger.error(
+        `Failed to auto-seed default subscription plans: ${err.message}`,
+        err.stack,
+      );
+    }
+  }
+
+  /**
+   * Ensures default subscription plans (FREE, PRO, BUSINESS) exist in the database,
+   * syncing stripe price IDs from environment configuration if provided.
+   */
+  async seedDefaultPlans(): Promise<void> {
+    for (const planDef of DEFAULT_PLANS) {
+      let plan = await this.planRepo.findOne({ where: { tier: planDef.tier } });
+
+      const configuredMonthlyPriceId =
+        planDef.tier === PlanTier.PRO
+          ? this.stripeConfig?.proPriceIdMonthly || null
+          : planDef.tier === PlanTier.BUSINESS
+            ? this.stripeConfig?.businessPriceIdMonthly || null
+            : null;
+
+      const configuredAnnualPriceId =
+        planDef.tier === PlanTier.PRO
+          ? this.stripeConfig?.proPriceIdAnnual || null
+          : planDef.tier === PlanTier.BUSINESS
+            ? this.stripeConfig?.businessPriceIdAnnual || null
+            : null;
+
+      if (!plan) {
+        plan = this.planRepo.create({
+          ...planDef,
+          stripeMonthlyPriceId: configuredMonthlyPriceId,
+          stripeAnnualPriceId: configuredAnnualPriceId,
+        });
+        await this.planRepo.save(plan);
+        this.logger.log(
+          `Seeded default ${planDef.tier} subscription plan into database.`,
+        );
+      } else {
+        let needsUpdate = false;
+        if (
+          configuredMonthlyPriceId &&
+          plan.stripeMonthlyPriceId !== configuredMonthlyPriceId
+        ) {
+          plan.stripeMonthlyPriceId = configuredMonthlyPriceId;
+          needsUpdate = true;
+        }
+        if (
+          configuredAnnualPriceId &&
+          plan.stripeAnnualPriceId !== configuredAnnualPriceId
+        ) {
+          plan.stripeAnnualPriceId = configuredAnnualPriceId;
+          needsUpdate = true;
+        }
+        if (needsUpdate) {
+          await this.planRepo.save(plan);
+          this.logger.log(`Updated Stripe price IDs for ${planDef.tier} plan.`);
+        }
+      }
+    }
+  }
+
   // ─── Plan & Subscription Retrieval ──────────────────────────────────────────
 
   async listPlans(): Promise<PlanDto[]> {
-    const plans = await this.planRepo.find({
+    let plans = await this.planRepo.find({
       order: { priceMonthlyUsdCents: 'ASC' },
     });
+
+    if (plans.length === 0) {
+      await this.seedDefaultPlans();
+      plans = await this.planRepo.find({
+        order: { priceMonthlyUsdCents: 'ASC' },
+      });
+    }
 
     return plans.map((p) => ({
       id: p.id,

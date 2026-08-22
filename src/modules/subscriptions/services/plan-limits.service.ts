@@ -16,6 +16,8 @@ import { KnowledgeChunk } from '../../ai/entities/knowledge-chunk.entity';
 import { ProjectRole } from '../../projects/entities/project-role.entity';
 import { InviteStatus } from '@modules/projects/enums/invite-status.enum';
 
+import { DEFAULT_PLANS } from '../constants/default-plans.constant';
+
 interface CachedSubscription {
   subscription: Subscription;
   cachedAt: number;
@@ -53,6 +55,39 @@ export class PlanLimitsService {
   }
 
   /**
+   * Helper to ensure the default Free plan is available, self-healing if missing.
+   */
+  private async ensureFreePlan(): Promise<Plan> {
+    let freePlan = await this.planRepo.findOne({
+      where: { tier: PlanTier.FREE },
+    });
+
+    if (!freePlan) {
+      this.logger.warn(
+        'Default Free plan not found in database. Auto-seeding default plans...',
+      );
+      for (const planDef of DEFAULT_PLANS) {
+        const existing = await this.planRepo.findOne({
+          where: { tier: planDef.tier },
+        });
+        if (!existing) {
+          const created = this.planRepo.create(planDef);
+          await this.planRepo.save(created);
+        }
+      }
+      freePlan = await this.planRepo.findOne({
+        where: { tier: PlanTier.FREE },
+      });
+    }
+
+    if (!freePlan) {
+      throw new NotFoundException('Default Free plan not found');
+    }
+
+    return freePlan;
+  }
+
+  /**
    * Retrieves user's active subscription, creating a default FREE subscription if none exists.
    */
   async getUserSubscription(userId: string): Promise<Subscription> {
@@ -67,12 +102,7 @@ export class PlanLimitsService {
     });
 
     if (!sub) {
-      const freePlan = await this.planRepo.findOne({
-        where: { tier: PlanTier.FREE },
-      });
-      if (!freePlan) {
-        throw new NotFoundException('Default Free plan not found');
-      }
+      const freePlan = await this.ensureFreePlan();
 
       sub = this.subscriptionRepo.create({
         userId,
@@ -124,10 +154,8 @@ export class PlanLimitsService {
     });
 
     if (!project || !project.admin) {
-      const freePlan = await this.planRepo.findOne({
-        where: { tier: PlanTier.FREE },
-      });
-      return freePlan!;
+      const freePlan = await this.ensureFreePlan();
+      return freePlan;
     }
 
     const adminSub = await this.getUserSubscription(project.admin.id);
