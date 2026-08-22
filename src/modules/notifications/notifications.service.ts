@@ -96,27 +96,27 @@ export class NotificationsService {
     const safeLimit = Math.min(100, Math.max(1, limit));
     const skip = (safePage - 1) * safeLimit;
 
-    const [notifications, total, unreadCount] = await Promise.all([
-      this.notificationRepo
-        .createQueryBuilder('notification')
-        .leftJoinAndMapOne(
-          'notification.actor',
-          User,
-          'actor',
-          'actor.id = notification.actor_id',
-        )
-        .where('notification.recipient_id = :userId', { userId })
-        .orderBy('notification.created_at', 'DESC')
-        .skip(skip)
-        .take(safeLimit)
-        .getMany(),
-      this.notificationRepo.count({
-        where: { recipientId: userId },
-      }),
-      this.notificationRepo.count({
-        where: { recipientId: userId, isRead: false },
-      }),
-    ]);
+    const notifications = await this.notificationRepo
+      .createQueryBuilder('notification')
+      .leftJoinAndMapOne(
+        'notification.actor',
+        User,
+        'actor',
+        'actor.id = notification.actor_id',
+      )
+      .where('notification.recipient_id = :userId', { userId })
+      .orderBy('notification.created_at', 'DESC')
+      .skip(skip)
+      .take(safeLimit)
+      .getMany();
+
+    const total = await this.notificationRepo.count({
+      where: { recipientId: userId },
+    });
+
+    const unreadCount = await this.notificationRepo.count({
+      where: { recipientId: userId, isRead: false },
+    });
 
     const items = notifications.map((notification) =>
       mapNotificationToApiNotification(notification as Notification & {
