@@ -10,10 +10,11 @@ import { PaymentRequiredException } from '../exceptions/payment-required.excepti
 import { Project } from '../../projects/entities/project.entity';
 import { ProjectMember } from '../../projects/entities/project-member.entity';
 import { Invite } from '../../projects/entities/invite.entity';
-import { InviteStatus } from '../../projects/enums/invite-status.enum';
 import { Task } from '../../tasks/entities/task.entity';
 import { Board } from '../../boards/entities/board.entity';
 import { KnowledgeChunk } from '../../ai/entities/knowledge-chunk.entity';
+import { ProjectRole } from '../../projects/entities/project-role.entity';
+import { InviteStatus } from '@modules/projects/enums/invite-status.enum';
 
 interface CachedSubscription {
   subscription: Subscription;
@@ -43,6 +44,8 @@ export class PlanLimitsService {
     private readonly boardRepo: Repository<Board>,
     @InjectRepository(KnowledgeChunk)
     private readonly knowledgeRepo: Repository<KnowledgeChunk>,
+    @InjectRepository(ProjectRole)
+    private readonly projectRoleRepo: Repository<ProjectRole>,
   ) {}
 
   public invalidateCache(userId: string): void {
@@ -254,13 +257,27 @@ export class PlanLimitsService {
    */
   async assertCanCreateCustomRole(projectId: string): Promise<void> {
     const effectivePlan = await this.getProjectEffectivePlan(projectId);
+    const maxCustomRoles = effectivePlan.features.maxCustomRoles;
 
-    if (!effectivePlan.features.customRolesEnabled) {
+    // Unlimited for Pro and Business plans
+    if (maxCustomRoles === null) {
+      return;
+    }
+
+    // Count existing custom roles (non-system roles) in the project
+    const currentCustomRoles = await this.projectRoleRepo.count({
+      where: { project: { id: projectId }, isSystemRole: false },
+    });
+
+    if (currentCustomRoles >= maxCustomRoles) {
       throw new PaymentRequiredException({
-        code: 'CUSTOM_ROLES_NOT_ALLOWED',
-        message: `Custom roles are only available on the Pro and Business plans. The project owner needs to upgrade.`,
+        code: 'CUSTOM_ROLES_LIMIT_REACHED',
+        message: `You have reached the maximum limit of ${maxCustomRoles} custom roles allowed on the ${effectivePlan.name} plan.`,
         limitType: 'custom_roles',
-        requiredPlan: PlanTier.PRO,
+        limit: maxCustomRoles,
+        current: currentCustomRoles,
+        requiredPlan:
+          effectivePlan.tier === PlanTier.FREE ? PlanTier.PRO : PlanTier.BUSINESS,
       });
     }
   }

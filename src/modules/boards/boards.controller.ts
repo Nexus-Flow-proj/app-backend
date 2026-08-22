@@ -98,7 +98,7 @@ export class BoardsController {
 
   @Patch('projects/:projectId/boards/reorder')
   @UseGuards(CsrfGuard)
-  @RequirePermission('board', 'manageColumns')
+  @RequirePermission('board', 'moveColumns')
   @Serialize(BoardColumnResponseDto)
   async reorderColumns(
     @Param('projectId') projectId: string,

@@ -36,6 +36,8 @@ export interface PlanFeatures {
   realtimeEnabled: boolean;
   /** Whether custom role creation is enabled for projects owned by this plan */
   customRolesEnabled: boolean;
+  /** Max custom roles allowed per project. null = unlimited */
+  maxCustomRoles: number | null;
   /** Activity log retention in days */
   activityRetentionDays: number;
   /** Trial days offered on first upgrade to this plan */

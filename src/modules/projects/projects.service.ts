@@ -64,12 +64,14 @@ export const DEFAULT_ROLE_PRESETS = [
       },
       workshop: {
         read: true,
-        createNodes: true,
-        updateNodes: true,
-        deleteNodes: true,
         generateWithAi: true,
       },
-      board: { read: true, moveTasks: true, manageColumns: true },
+      board: {
+        read: true,
+        moveTasks: true,
+        manageColumns: true,
+        moveColumns: true,
+      },
       chat: {
         read: true,
         send: true,
@@ -97,12 +99,14 @@ export const DEFAULT_ROLE_PRESETS = [
       },
       workshop: {
         read: true,
-        createNodes: true,
-        updateNodes: true,
-        deleteNodes: true,
         generateWithAi: true,
       },
-      board: { read: true, moveTasks: true, manageColumns: true },
+      board: {
+        read: true,
+        moveTasks: true,
+        manageColumns: true,
+        moveColumns: true,
+      },
       chat: {
         read: true,
         send: true,
@@ -130,12 +134,14 @@ export const DEFAULT_ROLE_PRESETS = [
       },
       workshop: {
         read: true,
-        createNodes: true,
-        updateNodes: true,
-        deleteNodes: true,
         generateWithAi: false,
       },
-      board: { read: true, moveTasks: true, manageColumns: false },
+      board: {
+        read: true,
+        moveTasks: true,
+        manageColumns: false,
+        moveColumns: true,
+      },
       chat: {
         read: true,
         send: true,
@@ -163,12 +169,14 @@ export const DEFAULT_ROLE_PRESETS = [
       },
       workshop: {
         read: true,
-        createNodes: true,
-        updateNodes: true,
-        deleteNodes: false,
         generateWithAi: false,
       },
-      board: { read: true, moveTasks: true, manageColumns: false },
+      board: {
+        read: true,
+        moveTasks: true,
+        manageColumns: false,
+        moveColumns: true,
+      },
       chat: {
         read: true,
         send: true,
@@ -196,12 +204,14 @@ export const DEFAULT_ROLE_PRESETS = [
       },
       workshop: {
         read: true,
-        createNodes: false,
-        updateNodes: false,
-        deleteNodes: false,
         generateWithAi: false,
       },
-      board: { read: true, moveTasks: false, manageColumns: false },
+      board: {
+        read: true,
+        moveTasks: false,
+        manageColumns: false,
+        moveColumns: false,
+      },
       chat: {
         read: true,
         send: false,

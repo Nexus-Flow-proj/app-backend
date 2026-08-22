@@ -18,6 +18,13 @@ export class ProjectAuthEvaluator {
 
     const permissions: RolePermissions = member.role.permissions;
 
+    if (category === 'board' && operation === 'moveColumns') {
+      if (permissions?.board?.moveColumns !== undefined) {
+        return !!permissions.board.moveColumns;
+      }
+      return !!permissions?.board?.manageColumns;
+    }
+
     return !!permissions?.[category]?.[operation];
   }
 

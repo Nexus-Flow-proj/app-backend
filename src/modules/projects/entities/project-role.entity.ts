@@ -30,15 +30,13 @@ export interface RolePermissions {
   };
   workshop: {
     read: boolean;
-    createNodes: boolean;
-    updateNodes: boolean;
-    deleteNodes: boolean;
     generateWithAi: boolean;
   };
   board: {
     read: boolean;
     moveTasks: boolean;
     manageColumns: boolean;
+    moveColumns?: boolean;
   };
   chat: {
     read: boolean;

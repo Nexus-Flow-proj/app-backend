@@ -100,20 +100,38 @@ export class ProjectAuthGuard implements CanActivate {
 
     request.projectMember = actor;
 
+    const { params, body, method } = request;
+
     if (requiredPermission) {
-      const isAllowed = ProjectAuthEvaluator.hasPermission(
+      let isAllowed = ProjectAuthEvaluator.hasPermission(
         actor,
         requiredPermission.category as any,
         requiredPermission.operation as any,
       );
+
+      // Allow route if required permission is tasks.update but request is exclusively moving a task and actor has board.moveTasks
+      if (
+        !isAllowed &&
+        requiredPermission.category === 'tasks' &&
+        requiredPermission.operation === 'update' &&
+        request.route?.path?.includes('/tasks/:id') &&
+        ['PATCH', 'PUT'].includes(method) &&
+        body &&
+        (body.boardColumnId !== undefined || body.columnOrder !== undefined) &&
+        !Object.keys(body).some(
+          (k) => k !== 'boardColumnId' && k !== 'columnOrder',
+        ) &&
+        ProjectAuthEvaluator.hasPermission(actor, 'board', 'moveTasks')
+      ) {
+        isAllowed = true;
+      }
+
       if (!isAllowed) {
         throw new ForbiddenException(
           `You do not have permission to perform this action (${requiredPermission.category}.${requiredPermission.operation})`,
         );
       }
     }
-
-    const { params, body, method } = request;
 
     if (params.memberId && request.route.path.includes('/members/:memberId')) {
       const target = await this.projectMemberRepo.findOne({
@@ -217,8 +235,6 @@ export class ProjectAuthGuard implements CanActivate {
           throw new NotFoundException('Task not found');
         }
 
-        const isAssignee = task.assignee?.id === actor.user?.id;
-
         if (method === 'DELETE') {
           if (task.createdBy) {
             const creatorLevel = await this.getCreatorRoleLevel(
@@ -237,51 +253,25 @@ export class ProjectAuthGuard implements CanActivate {
             }
           }
         } else if (['PATCH', 'PUT'].includes(method)) {
-          let hasManagerAuthority = true;
-          if (task.createdBy) {
-            const creatorLevel = await this.getCreatorRoleLevel(
-              projectId,
-              task.createdBy.id,
-            );
-            hasManagerAuthority = ProjectAuthEvaluator.canModifyResource(
+          const isMovingTask =
+            body &&
+            (body.boardColumnId !== undefined ||
+              body.columnOrder !== undefined);
+
+          // Moving tasks is governed by board.moveTasks permission
+          if (isMovingTask) {
+            const canMove = ProjectAuthEvaluator.hasPermission(
               actor,
-              task.createdBy.id,
-              creatorLevel,
+              'board',
+              'moveTasks',
             );
-          }
-
-          if (!hasManagerAuthority) {
-            if (!isAssignee) {
+            if (!canMove) {
               throw new ForbiddenException(
-                'You cannot modify resources created by someone with an equal or higher role level',
+                'You do not have permission to move tasks to another board column',
               );
-            }
-
-            // Assignee restrictions
-            if (body && body.deadline !== undefined) {
-              throw new ForbiddenException(
-                'Assignees cannot change the task deadline',
-              );
-            }
-            if (
-              body &&
-              (body.assigneeId !== undefined || body.assignee !== undefined)
-            ) {
-              throw new ForbiddenException('Assignees cannot reassign tasks');
-            }
-            if (body && body.boardColumnId !== undefined) {
-              const canMove = ProjectAuthEvaluator.hasPermission(
-                actor,
-                'board',
-                'moveTasks',
-              );
-              if (!canMove) {
-                throw new ForbiddenException(
-                  'You do not have permission to move tasks to another board column',
-                );
-              }
             }
           }
+          // All task updates bypass creator role hierarchy
         }
       }
     }
@@ -297,9 +287,8 @@ export class ProjectAuthGuard implements CanActivate {
           throw new NotFoundException('Subtask not found');
         }
 
-        const isAssignee = subtask.task?.assignee?.id === actor.user?.id;
-
-        if (subtask.task?.createdBy) {
+        if (method === 'DELETE' && subtask.task?.createdBy) {
+          const isAssignee = subtask.task?.assignee?.id === actor.user?.id;
           const creatorLevel = await this.getCreatorRoleLevel(
             projectId,
             subtask.task.createdBy.id,
@@ -311,7 +300,7 @@ export class ProjectAuthGuard implements CanActivate {
           );
           if (!canModify && !isAssignee) {
             throw new ForbiddenException(
-              'You cannot modify or delete subtasks created by someone with an equal or higher role level',
+              'You cannot delete subtasks created by someone with an equal or higher role level',
             );
           }
         }
