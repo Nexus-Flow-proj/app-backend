@@ -58,6 +58,25 @@ export class BoardsController {
     return { message: 'Board column created successfully.', data };
   }
 
+  // ─── Reorder Columns ───────────────────────────────────
+
+  @Patch('projects/:projectId/boards/reorder')
+  @UseGuards(CsrfGuard)
+  @RequirePermission('board', 'moveColumns')
+  @Serialize(BoardColumnResponseDto)
+  async reorderColumns(
+    @Param('projectId') projectId: string,
+    @Body() body: ReorderBoardColumnsDto,
+    @CurrentUser() user: User,
+  ) {
+    const data = await this.boardsService.reorderColumns(
+      projectId,
+      body,
+      user.id,
+    );
+    return { message: 'Board columns reordered successfully.', data };
+  }
+
   // ─── Update Column ──────────────────────────────────────
 
   @Patch('projects/:projectId/boards/:id')
@@ -92,24 +111,5 @@ export class BoardsController {
   ) {
     await this.boardsService.deleteColumn(id, user.id, projectId);
     return { message: 'Board column deleted successfully.', data: null };
-  }
-
-  // ─── Reorder Columns ───────────────────────────────────
-
-  @Patch('projects/:projectId/boards/reorder')
-  @UseGuards(CsrfGuard)
-  @RequirePermission('board', 'moveColumns')
-  @Serialize(BoardColumnResponseDto)
-  async reorderColumns(
-    @Param('projectId') projectId: string,
-    @Body() body: ReorderBoardColumnsDto,
-    @CurrentUser() user: User,
-  ) {
-    const data = await this.boardsService.reorderColumns(
-      projectId,
-      body,
-      user.id,
-    );
-    return { message: 'Board columns reordered successfully.', data };
   }
 }
