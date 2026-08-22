@@ -680,7 +680,9 @@ export class TasksService {
 
   const oldStatus = task.status;
 
-  Object.assign(task, scalarFields);
+  Object.assign(task, Object.fromEntries(
+    Object.entries(scalarFields).filter(([_, v]) => v !== undefined)
+  ));
 
   const savedTask = await this.taskRepo.save(task);
 
