@@ -11,6 +11,7 @@ import { Invite } from '../projects/entities/invite.entity';
 import { Task } from '../tasks/entities/task.entity';
 import { Board } from '../boards/entities/board.entity';
 import { KnowledgeChunk } from '../ai/entities/knowledge-chunk.entity';
+import { ProjectRole } from '../projects/entities/project-role.entity';
 import { StripeService } from './services/stripe.service';
 import { PlanLimitsService } from './services/plan-limits.service';
 import { SubscriptionsService } from './services/subscriptions.service';
@@ -29,6 +30,7 @@ import stripeConfig from '../../config/stripe.config';
       Project,
       ProjectMember,
       Invite,
+      ProjectRole,
       Task,
       Board,
       KnowledgeChunk,
